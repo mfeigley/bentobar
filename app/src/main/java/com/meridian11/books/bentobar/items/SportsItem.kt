@@ -27,8 +27,14 @@ object SportsItem : ItemType("sports", R.string.item_sports_title, Sym.STAR, R.s
     internal val boards: Refresher<League, Scoreboard> = Background.refresher(
         type = type,
         service = online,
-        every = { _, b -> SportsRules.every(b) },
-        load = { league, last -> SportsLoad.load(league, last, Now.wall()) },
+        every = { league, b ->
+            val teams = SportsLoad.followedTeamsFor(league, Store.config.value.items)
+            SportsRules.every(b, Now.wall(), teams)
+        },
+        restore = { league -> SportsLoad.kept(league, Now.wall()) },
+        load = { league, last ->
+            SportsLoad.load(league, last, Now.wall()) { SportsLoad.leagues(Store.config.value.items) }
+        },
     )
 
     @Volatile private var stagedName: String? = null
@@ -48,20 +54,54 @@ object SportsItem : ItemType("sports", R.string.item_sports_title, Sym.STAR, R.s
         return leagues.mapNotNull { l -> boards.peek(l)?.let { l to it } }.toMap()
     }
 
+    /**
+     * When the popup menu opens: only trigger an early refresh if a game is currently live or
+     * starting within 30 minutes and the snapshot is older than [SportsRules.MENU_MS] (2 minutes).
+     * Otherwise rely on the normal schedule-aware refresh window.
+     */
     internal fun opened(item: ItemConfig) {
         if (isStaged(item) || item.section == Section.OFF || !Online.on(online)) return
+        val now = Now.wall()
+        val teams = SportsRules.teams(item)
         for (l in SportsRules.leagues(item)) {
             val b = boards.peek(l)
-            if (b == null) boards.want(l) else if (b.failure == null) boards.refresh(l, floorMs = SportsRules.MENU_MS)
+            if (b == null) {
+                boards.want(l)
+            } else if (b.failure == null) {
+                val relevant = if (teams.isEmpty()) b.games else b.games.filter { g -> teams.any { g.matchesTeam(it) } }
+                val activeOrSoon = relevant.any { it.state == GameState.LIVE } || SportsRules.hasStartingSoon(relevant, now)
+                if (activeOrSoon) {
+                    boards.refresh(l, floorMs = SportsRules.MENU_MS)
+                } else {
+                    boards.want(l)
+                }
+            }
         }
     }
 
+    /** Manual Refresh in the menu: guarded by [SportsRules.againAfter] (at least 60s, or 15m on HTTP 429). */
     internal fun refresh(item: ItemConfig) {
         if (stagedName != null || !Online.on(online)) return
         for (l in SportsRules.leagues(item)) {
-            boards.refresh(l, floorMs = 10_000L)
+            boards.refresh(l, floorMs = SportsRules.againAfter(boards.peek(l)))
         }
     }
+
+    private var seenItems: List<ItemConfig>? = null
+    private val tidying = Background.executor(type)
+
+    private fun tidy() {
+        val items = Store.config.value.items
+        if (items === seenItems) return
+        seenItems = items
+        val active = SportsLoad.leagues(items)
+        boards.keepOnly(active)
+        if (Online.setUp(online)) tidying.execute { SportsLoad.tidy(active) }
+    }
+
+    override fun sample(now: Long) = tidy()
+
+    override fun onIdle() = tidy()
 
     internal fun formatStartTime(epochMs: Long?): String? {
         if (epochMs == null) return null

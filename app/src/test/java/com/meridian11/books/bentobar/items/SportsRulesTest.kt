@@ -214,7 +214,7 @@ class SportsRulesTest {
         assertEquals(0, SportsRules.barGames(cowboysAndNiners, liveOnly = true).size)
     }
 
-    @Test fun formatsBarTextWithinTwentyCharactersAndChoosesRefreshInterval() {
+    @Test fun formatsBarTextWithinTwentyCharactersAndChoosesScheduleAwareRefreshIntervals() {
         val board = SportsRules.read(League.NFL, scoreboardJson, now = 100_000L)!!
         for (g in board.games) {
             val text = SportsRules.barText(g, "7:20 PM")
@@ -224,11 +224,40 @@ class SportsRulesTest {
         assertEquals("DAL 27 IND 23 F", SportsRules.barText(board.games[1]))
         assertEquals("SF @ SEA · 7:20 PM", SportsRules.barText(board.games[2], "7:20 PM"))
 
-        assertEquals(SportsRules.LIVE_REFRESH_MS, SportsRules.every(board))
-        val idleBoard = board.copy(games = board.games.filter { it.state != GameState.LIVE })
-        assertEquals(SportsRules.IDLE_REFRESH_MS, SportsRules.every(idleBoard))
-        assertEquals(SportsRules.RETRY_MS, SportsRules.every(idleBoard.copy(failure = Failure.OFFLINE)))
-        assertEquals(SportsRules.SLOW_MS, SportsRules.every(idleBoard.copy(failure = Failure.SLOW_DOWN)))
+        // Live game present -> 3 minutes
+        assertEquals(SportsRules.LIVE_REFRESH_MS, SportsRules.every(board, now = 100_000L))
+        // When filtering only for DAL (whose game is FINAL), interval drops to 60 minutes (DONE_REFRESH_MS) even though TB@CHI is live!
+        assertEquals(SportsRules.DONE_REFRESH_MS, SportsRules.every(board, now = 100_000L, teams = listOf("DAL")))
+
+        // Upcoming game starting in 15 minutes -> SOON_REFRESH_MS (5 minutes)
+        val kickMs = board.games[2].startEpochMs!!
+        assertEquals(SportsRules.SOON_REFRESH_MS, SportsRules.every(board, now = kickMs - 15 * 60_000L, teams = listOf("SF")))
+        // Upcoming game starting in 3 hours -> IDLE_REFRESH_MS (30 minutes)
+        assertEquals(SportsRules.IDLE_REFRESH_MS, SportsRules.every(board, now = kickMs - 3 * 3600_000L, teams = listOf("SF")))
+
+        // Exponential backoff on consecutive misses
+        assertEquals(SportsRules.RETRY_MS, SportsRules.every(board.copy(failure = Failure.OFFLINE, misses = 1)))
+        assertEquals(SportsRules.RETRY_MS * 2, SportsRules.every(board.copy(failure = Failure.OFFLINE, misses = 2)))
+        assertEquals(SportsRules.MAX_RETRY_MS, SportsRules.every(board.copy(failure = Failure.OFFLINE, misses = 5)))
+
+        // Rate-limited (429): respects SLOW_MS and Retry-After header
+        assertEquals(SportsRules.SLOW_MS, SportsRules.every(board.copy(failure = Failure.SLOW_DOWN)))
+        assertEquals(1800_000L, SportsRules.every(board.copy(failure = Failure.SLOW_DOWN, retryAfterSec = 1800)))
+        assertEquals(SportsRules.REFRESH_FLOOR_MS, SportsRules.againAfter(board))
+        assertEquals(1800_000L, SportsRules.againAfter(board.copy(failure = Failure.SLOW_DOWN, retryAfterSec = 1800)))
+    }
+
+    @Test fun roundTripsKeptScoreboardWithoutFailureState() {
+        val board = SportsRules.read(League.NFL, scoreboardJson, now = 100_000L)!!
+            .copy(failure = Failure.OFFLINE, misses = 3, retryAfterSec = 120)
+        val encoded = SportsRules.keep(board)
+        val restored = SportsRules.kept(encoded)
+        assertNotNull(restored)
+        assertEquals(League.NFL, restored!!.league)
+        assertEquals(3, restored.games.size)
+        assertNull(restored.failure)
+        assertEquals(0, restored.misses)
+        assertEquals(0L, restored.retryAfterSec)
     }
 
     @Test fun managesLeaguesAndTeamsInItemConfig() {

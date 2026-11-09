@@ -6,7 +6,7 @@
     <string name="trigger_sports">Show when a game you follow is live</string>
     <string name="trigger_sports_short">shows during live games</string>
 
-    <string name="sports_consent">Sports scores come from ESPN (site.api.espn.com). No key is needed. BentoBar asks for each followed league\'s scoreboard every minute while a game is live and the bar is on screen (or every 15 minutes otherwise), and when you open its menu or press Refresh; ESPN sees your IP address, as any website does.</string>
+    <string name="sports_consent">Sports scores come from ESPN (site.api.espn.com). No key is needed. BentoBar asks for each followed league\'s scoreboard every 3 minutes while a game is live and the bar is on screen (every 5 minutes near kickoff, and every 30 to 60 minutes otherwise), and when you press Refresh; ESPN sees your IP address, as any website does.</string>
     <string name="sports_turn_on">Turn on Sports scores</string>
     <string name="sports_leagues_section">Leagues</string>
     <string name="sports_leagues_help">Pick up to four leagues for this item.</string>

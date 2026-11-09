@@ -174,9 +174,9 @@ BentoBar doesn't read other apps' windows and doesn't watch your keyboard, mouse
   its menu or press Refresh. No key is needed, and the pairs you follow and the converter's amounts are
   worked out on the device. Frankfurter sees your IP address, as any website does.
 - **Sports scores** asks [ESPN](https://www.espn.com) for the scoreboard of each league you select,
-  every minute while a game is live and every 15 minutes otherwise while the bar is on screen, and when
-  you open its menu or press Refresh. No key is needed, and team filtering is done on the device. ESPN
-  sees your IP address, as any website does.
+  every 3 minutes while a followed game is live and the bar is on screen (every 5 minutes near kickoff,
+  and every 30 to 60 minutes otherwise), and when you press Refresh. No key is needed, and team
+  filtering is done on the device. ESPN sees your IP address, as any website does.
 - **Flight** sends [AirLabs](https://airlabs.co) the flight number and your own AirLabs key: when you
   track a flight, when you press Refresh, and while it follows the flight (about every 3 hours, then
   every 30 minutes or sooner from 3 hours before departure until it lands). AirLabs sees your IP

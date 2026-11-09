@@ -2,6 +2,7 @@ package com.meridian11.books.bentobar.items
 
 import androidx.compose.runtime.Immutable
 import com.meridian11.books.bentobar.data.ItemConfig
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -15,15 +16,31 @@ import kotlin.math.abs
 
 /**
  * Pure rules for the Sports scores item: supported ESPN leagues, parsing ESPN scoreboard replies,
- * filtering by league and favorite teams, status bar rotation, and adaptive refresh timing.
+ * filtering by league and favorite teams, status bar rotation, and schedule-aware rate-limiting.
  * No Android imports, and no logging.
  */
 object SportsRules {
-    const val LIVE_REFRESH_MS = 60_000L
-    const val IDLE_REFRESH_MS = 15 * 60_000L
-    const val MENU_MS = 30_000L
+    /** While a followed game is live, refresh every 3 minutes. */
+    const val LIVE_REFRESH_MS = 3 * 60_000L
+    /** When an upcoming game is within 30 minutes of kickoff (or recently past kickoff), check every 5 minutes. */
+    const val SOON_REFRESH_MS = 5 * 60_000L
+    /** When upcoming games are more than 30 minutes away, refresh every 30 minutes. */
+    const val IDLE_REFRESH_MS = 30 * 60_000L
+    /** When all games are final or none are scheduled today, refresh once an hour. */
+    const val DONE_REFRESH_MS = 60 * 60_000L
+    /** Minimum age before opening the popup menu refreshes a live or imminent scoreboard. */
+    const val MENU_MS = 2 * 60_000L
+    /** Minimum cooldown between manual Refresh clicks. */
+    const val REFRESH_FLOOR_MS = 60_000L
+    /** Base retry delay after a failed request; doubles on consecutive misses up to [MAX_RETRY_MS]. */
     const val RETRY_MS = 2 * 60_000L
-    const val SLOW_MS = 5 * 60_000L
+    const val MAX_RETRY_MS = 15 * 60_000L
+    /** Minimum wait when ESPN responds with HTTP 429 (rate-limited). */
+    const val SLOW_MS = 15 * 60_000L
+
+    private const val SOON_AHEAD_MS = 30 * 60_000L
+    private const val SOON_BEHIND_MS = 3 * 60 * 60_000L
+
     const val BAR_CHARS = 20
     const val MOST_LEAGUES = 4
     const val MOST_TEAMS = 10
@@ -32,6 +49,9 @@ object SportsRules {
 
     const val DEFAULT_LEAGUES = "NFL"
 
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @Serializable
     enum class League(val code: String, val label: String, val sport: String, val slug: String) {
         NFL("NFL", "NFL", "football", "nfl"),
         NBA("NBA", "NBA", "basketball", "nba"),
@@ -52,8 +72,10 @@ object SportsRules {
         }
     }
 
+    @Serializable
     enum class GameState { LIVE, FINAL, UPCOMING }
 
+    @Serializable
     @Immutable
     data class Game(
         val id: String,
@@ -61,12 +83,12 @@ object SportsRules {
         val awayAbbr: String,
         val awayName: String,
         val awayFullName: String,
-        val awayScore: Int?,
+        val awayScore: Int? = null,
         val awayRank: Int? = null,
         val homeAbbr: String,
         val homeName: String,
         val homeFullName: String,
-        val homeScore: Int?,
+        val homeScore: Int? = null,
         val homeRank: Int? = null,
         val state: GameState,
         val statusDetail: String,
@@ -90,12 +112,15 @@ object SportsRules {
         override fun toString() = "Game(league=${league.code}, state=$state)"
     }
 
+    @Serializable
     @Immutable
     data class Scoreboard(
         val league: League,
         val games: List<Game> = emptyList(),
         val fetchedAt: Long = 0,
         val failure: Failure? = null,
+        val misses: Int = 0,
+        val retryAfterSec: Long = 0,
     ) {
         val hasLive: Boolean get() = games.any { it.state == GameState.LIVE }
         override fun toString() = "Scoreboard(league=${league.code}, games=${games.size}, failure=$failure)"
@@ -409,11 +434,53 @@ object SportsRules {
         GameState.UPCOMING -> "${g.awayName} at ${g.homeName}, ${startTimeText ?: g.statusDetail}"
     }
 
-    fun every(board: Scoreboard): Long = when {
-        board.failure == Failure.SLOW_DOWN -> SLOW_MS
-        board.failure != null -> RETRY_MS
-        board.hasLive -> LIVE_REFRESH_MS
-        else -> IDLE_REFRESH_MS
+    // ---- rate-limiting and adaptive polling -------------------------------------------------------
+
+    /** True if any upcoming game in [games] starts within 30 minutes or started within the last 3 hours. */
+    fun hasStartingSoon(games: List<Game>, now: Long): Boolean = games.any { g ->
+        g.state == GameState.UPCOMING && g.startEpochMs != null &&
+            g.startEpochMs - now <= SOON_AHEAD_MS && now - g.startEpochMs <= SOON_BEHIND_MS
+    }
+
+    /**
+     * How long [board] stays fresh before ESPN is asked again:
+     * - Rate-limited (`SLOW_DOWN`): at least 15 minutes (or `retryAfterSec` if longer).
+     * - Transient failure: exponential backoff (`2m`, `4m`, `8m`, up to `15m`).
+     * - Live game (matching [teams] when filtered): every 3 minutes ([LIVE_REFRESH_MS]).
+     * - Upcoming game starting within 30 minutes: every 5 minutes ([SOON_REFRESH_MS]).
+     * - Later upcoming games today: every 30 minutes ([IDLE_REFRESH_MS]).
+     * - All games final or none scheduled: every 60 minutes ([DONE_REFRESH_MS]).
+     */
+    fun every(board: Scoreboard, now: Long = board.fetchedAt, teams: List<String> = emptyList()): Long {
+        if (board.failure == Failure.SLOW_DOWN) {
+            return maxOf(SLOW_MS, board.retryAfterSec * 1000L)
+        }
+        if (board.failure != null) {
+            val shift = (board.misses - 1).coerceIn(0, 3)
+            return minOf(MAX_RETRY_MS, RETRY_MS shl shift)
+        }
+        val relevant = if (teams.isEmpty()) board.games else board.games.filter { g -> teams.any { g.matchesTeam(it) } }
+        return when {
+            relevant.any { it.state == GameState.LIVE } -> LIVE_REFRESH_MS
+            hasStartingSoon(relevant, now) -> SOON_REFRESH_MS
+            relevant.any { it.state == GameState.UPCOMING } -> IDLE_REFRESH_MS
+            else -> DONE_REFRESH_MS
+        }
+    }
+
+    /** Minimum wait before a manual Refresh is allowed to ask ESPN again for [board]. */
+    fun againAfter(board: Scoreboard?): Long =
+        maxOf(if (board?.failure == Failure.SLOW_DOWN) SLOW_MS else REFRESH_FLOOR_MS, (board?.retryAfterSec ?: 0L) * 1000L)
+
+    // ---- on-device persistence (parsed model only, never raw JSON) --------------------------------
+
+    fun keep(board: Scoreboard): String = json.encodeToString(Scoreboard.serializer(), board)
+
+    fun kept(text: String): Scoreboard? = try {
+        json.decodeFromString(Scoreboard.serializer(), text).copy(failure = null, misses = 0, retryAfterSec = 0)
+            .takeIf { it.fetchedAt > 0 }
+    } catch (e: Exception) {
+        null
     }
 
     // ---- debug samples (`./bento debug sports stage live|final|upcoming|offline`) ------------------
