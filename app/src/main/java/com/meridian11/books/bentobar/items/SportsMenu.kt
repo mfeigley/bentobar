@@ -65,6 +65,7 @@ import com.meridian11.books.bentobar.ui.MenuNote
 import com.meridian11.books.bentobar.ui.SearchField
 import com.meridian11.books.bentobar.ui.SwitchRow
 import com.meridian11.books.bentobar.ui.rememberTick
+import com.meridian11.books.bentobar.util.Now
 import com.meridian11.books.bentobar.util.Sym
 import com.meridian11.books.bentobar.util.SymIcon
 import java.time.ZoneId
@@ -120,21 +121,23 @@ internal fun SportsMenu(item: ItemConfig, host: MenuHost) {
             }
         }
         else -> {
-            val games = SportsRules.gamesFor(leagues, teams, boards, pinnedIds)
-            val liveGameIds = remember(games) { games.filter { it.state == GameState.LIVE }.mapTo(HashSet()) { it.id } }
-            val anyPinnedLive = games.any { it.state == GameState.LIVE && it.id in pinnedIds }
+            val now = Now.wall()
+            val games = SportsRules.gamesFor(leagues, teams, boards, pinnedIds, now)
+            val liveGameIds = remember(games, now) { games.filter { it.inLiveRotation(now) }.mapTo(HashSet()) { it.id } }
+            val anyPinnedLive = games.any { it.inLiveRotation(now) && it.id in pinnedIds }
             val showLeagueBadge = leagues.size > 1
             MenuCard(Sym.STAR, title, subtitle.ifEmpty { null }) {
                 if (games.isEmpty()) {
                     MenuNote(stringResource(R.string.sports_no_games))
                 } else {
                     games.take(12).forEach { g ->
-                        val isPinned = g.state == GameState.LIVE && g.id in pinnedIds
+                        val inRotation = g.inLiveRotation(now)
+                        val isPinned = inRotation && g.id in pinnedIds
                         GameRow(
                             g = g,
                             showLeague = showLeagueBadge,
                             isPinned = isPinned,
-                            onTogglePin = if (g.state == GameState.LIVE) {
+                            onTogglePin = if (inRotation) {
                                 {
                                     Store.updateItem(item.id) { SportsRules.togglePinned(it, g.id, liveGameIds) }
                                     Ticker.refresh(SportsItem.type)

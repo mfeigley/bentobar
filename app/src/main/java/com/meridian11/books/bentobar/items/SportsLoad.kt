@@ -40,7 +40,7 @@ object SportsLoad {
         val reply = Http.get(Request(Host.ESPN, league.path))
         val went = Http.sent(Host.ESPN) != before
         return when (reply) {
-            is Reply.Ok -> SportsRules.read(league, reply.text, now)?.also { keep(it, activeLeagues()) }
+            is Reply.Ok -> SportsRules.read(league, reply.text, now, last)?.also { keep(it, activeLeagues()) }
                 ?: failed(league, last, Failure.NO_ANSWER, went)
             is Reply.Failed -> when (reply.why) {
                 Why.OFF -> null

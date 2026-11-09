@@ -37,6 +37,8 @@ object SportsRules {
     const val MAX_RETRY_MS = 15 * 60_000L
     /** Minimum wait when ESPN responds with HTTP 429 (rate-limited). */
     const val SLOW_MS = 15 * 60_000L
+    /** Keep a game in the live rotation for 5 minutes after it initially transitions from LIVE to FINAL. */
+    const val FINAL_HOLD_MS = 5 * 60_000L
 
     private const val SOON_AHEAD_MS = 30 * 60_000L
     private const val SOON_BEHIND_MS = 3 * 60 * 60_000L
@@ -96,9 +98,14 @@ object SportsRules {
         val possessionAbbr: String? = null,
         val situationText: String? = null,
         val startEpochMs: Long? = null,
+        val finalSinceMs: Long? = null,
         val webLink: String? = null,
     ) {
         val margin: Int? get() = if (awayScore != null && homeScore != null) abs(awayScore - homeScore) else null
+
+        /** True while [state] is [GameState.LIVE], or for [FINAL_HOLD_MS] (5 minutes) after initially going final. */
+        fun inLiveRotation(now: Long): Boolean =
+            state == GameState.LIVE || (state == GameState.FINAL && finalSinceMs != null && now - finalSinceMs in 0..FINAL_HOLD_MS)
 
         fun matchesTeam(query: String): Boolean {
             val q = query.trim().uppercase(Locale.ROOT)
@@ -211,11 +218,12 @@ object SportsRules {
 
     // ---- parsing ESPN scoreboard JSON -------------------------------------------------------------
 
-    fun read(league: League, jsonText: String, now: Long): Scoreboard? = try {
+    fun read(league: League, jsonText: String, now: Long, last: Scoreboard? = null): Scoreboard? = try {
         val root = Json.parseToJsonElement(jsonText).jsonObject
         val events = root["events"] as? JsonArray ?: return null
+        val prevById = last?.games?.associateBy { it.id }.orEmpty()
         val games = events.asSequence().take(60).mapNotNull { el ->
-            parseEvent(league, el as? JsonObject ?: return@mapNotNull null)
+            parseEvent(league, el as? JsonObject ?: return@mapNotNull null, now, prevById)
         }.toList()
         Scoreboard(league, games, fetchedAt = now)
     } catch (e: Exception) {
@@ -224,7 +232,7 @@ object SportsRules {
         null
     }
 
-    private fun parseEvent(league: League, ev: JsonObject): Game? {
+    private fun parseEvent(league: League, ev: JsonObject, now: Long, prevById: Map<String, Game>): Game? {
         val id = ev["id"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() } ?: return null
         val comps = ev["competitions"] as? JsonArray
         val comp = comps?.firstOrNull() as? JsonObject ?: return null
@@ -311,6 +319,13 @@ object SportsRules {
 
         val dateStr = (comp["date"] ?: ev["date"])?.jsonPrimitive?.content
         val startEpochMs = dateStr?.let(::parseIsoEpochMs)
+        val prev = prevById[id]
+        val finalSinceMs = when {
+            state != GameState.FINAL -> null
+            prev?.state == GameState.LIVE -> now
+            prev?.state == GameState.FINAL -> prev.finalSinceMs
+            else -> null
+        }
         val webLink = parseEspnLink(ev["links"] as? JsonArray)
 
         val shortStatus = compactStatus(league, state, clock, period, shortDetail)
@@ -335,6 +350,7 @@ object SportsRules {
             possessionAbbr = possessionAbbr,
             situationText = situationText,
             startEpochMs = startEpochMs,
+            finalSinceMs = finalSinceMs,
             webLink = webLink,
         )
     }
@@ -421,36 +437,59 @@ object SportsRules {
     // ---- selecting, filtering, and formatting games -----------------------------------------------
 
     /**
-     * All games across [leagues] matching [teams] (or all games when [teams] is empty), ordered with
-     * pinned LIVE games first, then other LIVE games, then FINAL games, then UPCOMING games.
+     * Timestamp used to order [GameState.FINAL] games most-recently-ended first: uses [Game.finalSinceMs]
+     * when the end time is known, falling back to [Game.startEpochMs] in reverse chronological order.
+     */
+    internal fun finalOrderKey(g: Game): Long = g.finalSinceMs ?: g.startEpochMs ?: Long.MIN_VALUE
+
+    /**
+     * All games across [leagues] matching [teams] (or all games when [teams] is empty), ordered with:
+     * 1. Pinned games in the live rotation ([Game.inLiveRotation]),
+     * 2. Unpinned games in the live rotation ([Game.inLiveRotation]),
+     * 3. [GameState.FINAL] games ordered by most recently ended first (falling back to [Game.startEpochMs]
+     *    in reverse chronological order when the end time is unknown),
+     * 4. [GameState.UPCOMING] games in chronological order.
      */
     fun gamesFor(
         leagues: List<League>,
         teams: List<String>,
         boards: Map<League, Scoreboard>,
         pinnedIds: Set<String> = emptySet(),
+        now: Long = 0L,
     ): List<Game> {
         val raw = leagues.flatMap { boards[it]?.games.orEmpty() }
         val filtered = if (teams.isEmpty()) raw else raw.filter { g -> teams.any { g.matchesTeam(it) } }
         return filtered.sortedWith(
-            compareBy<Game> {
-                when (it.state) {
-                    GameState.LIVE -> if (it.id in pinnedIds) 0 else 1
-                    GameState.FINAL -> 2
-                    GameState.UPCOMING -> 3
+            compareBy<Game> { g ->
+                when {
+                    g.inLiveRotation(now) && g.id in pinnedIds -> 0
+                    g.inLiveRotation(now) -> 1
+                    g.state == GameState.FINAL -> 2
+                    else -> 3
                 }
-            }.thenBy { it.startEpochMs ?: Long.MAX_VALUE },
+            }.thenComparator { a, b ->
+                if (a.state == GameState.FINAL && b.state == GameState.FINAL) {
+                    finalOrderKey(b).compareTo(finalOrderKey(a))
+                } else {
+                    (a.startEpochMs ?: Long.MAX_VALUE).compareTo(b.startEpochMs ?: Long.MAX_VALUE)
+                }
+            },
         )
     }
 
     /**
      * Games to rotate in the status bar:
-     * - When one or more LIVE games are pinned in [pinnedIds], only those pinned LIVE games.
-     * - When [liveOnly] is true, only LIVE games.
-     * - Otherwise, LIVE games when any game is currently live, or all matching games when none is live.
+     * - When one or more games in the live rotation are pinned in [pinnedIds], only those pinned games.
+     * - When [liveOnly] is true, only games in the live rotation (including games within [FINAL_HOLD_MS] of going final).
+     * - Otherwise, games in the live rotation when any is active, or all matching games when none is active.
      */
-    fun barGames(games: List<Game>, liveOnly: Boolean, pinnedIds: Set<String> = emptySet()): List<Game> {
-        val live = games.filter { it.state == GameState.LIVE }
+    fun barGames(
+        games: List<Game>,
+        liveOnly: Boolean,
+        pinnedIds: Set<String> = emptySet(),
+        now: Long = 0L,
+    ): List<Game> {
+        val live = games.filter { it.inLiveRotation(now) }
         val pinnedLive = if (pinnedIds.isEmpty()) emptyList() else live.filter { it.id in pinnedIds }
         return when {
             pinnedLive.isNotEmpty() -> pinnedLive

@@ -299,4 +299,59 @@ class SportsRulesTest {
         assertEquals(setOf("2", "1"), SportsRules.pinnedIds(item))
         assertEquals(2, SportsRules.barGames(ordered, liveOnly = false, pinnedIds = SportsRules.pinnedIds(item)).size)
     }
+
+    @Test fun holdsNewlyFinalGamesInLiveRotationForFiveMinutesAndOrdersFinalGamesReverseChronologically() {
+        val initial = SportsRules.read(League.NFL, scoreboardJson, now = 100_000L)!!
+        assertNull(initial.games[1].finalSinceMs) // already final on first read -> end time unknown
+
+        // Game 401671701 (TB @ CHI) transitions from LIVE ("in") to FINAL ("post") at t = 200_000L
+        val afterFinalJson = scoreboardJson
+            .replace(""""state": "in"""", """"state": "post"""")
+            .replace(""""completed": false,""", """"completed": true,""")
+        val updated = SportsRules.read(League.NFL, afterFinalJson, now = 200_000L, last = initial)!!
+        val newlyFinal = updated.games.first { it.id == "401671701" }
+        val olderFinal = updated.games.first { it.id == "401671702" }
+        assertEquals(GameState.FINAL, newlyFinal.state)
+        assertEquals(200_000L, newlyFinal.finalSinceMs)
+        assertNull(olderFinal.finalSinceMs)
+
+        // Preserves finalSinceMs on subsequent refreshes
+        val refreshedAgain = SportsRules.read(League.NFL, afterFinalJson, now = 260_000L, last = updated)!!
+        assertEquals(200_000L, refreshedAgain.games.first { it.id == "401671701" }.finalSinceMs)
+
+        // At +4 minutes (within 5-minute hold), newlyFinal stays in the live rotation
+        val at4Min = 200_000L + 4 * 60_000L
+        val gamesAt4Min = SportsRules.gamesFor(listOf(League.NFL), emptyList(), mapOf(League.NFL to updated), now = at4Min)
+        assertEquals(listOf("TB"), SportsRules.barGames(gamesAt4Min, liveOnly = true, now = at4Min).map { it.awayAbbr })
+        assertEquals(listOf("TB"), SportsRules.barGames(gamesAt4Min, liveOnly = false, now = at4Min).map { it.awayAbbr })
+
+        // At +6 minutes (past 5-minute hold), newlyFinal leaves the live rotation
+        val at6Min = 200_000L + 6 * 60_000L
+        val gamesAt6Min = SportsRules.gamesFor(listOf(League.NFL), emptyList(), mapOf(League.NFL to updated), now = at6Min)
+        assertEquals(emptyList<String>(), SportsRules.barGames(gamesAt6Min, liveOnly = true, now = at6Min).map { it.awayAbbr })
+
+        // Final games with unknown end times across selected leagues are ordered by start time in reverse chronological order
+        val nflFinal = SportsRules.sample("final", League.NFL, now = 1_000_000_000L)!!
+        val nbaFinal = SportsRules.Scoreboard(
+            league = League.NBA,
+            games = listOf(
+                nflFinal.games[0].copy(
+                    id = "nba1",
+                    league = League.NBA,
+                    awayAbbr = "BOS",
+                    homeAbbr = "NYK",
+                    startEpochMs = 1_000_000_000L - 10_800_000L, // 3h ago (more recent than DAL 4h ago and CIN 5h ago)
+                    finalSinceMs = null,
+                ),
+            ),
+            fetchedAt = 1_000_000_000L,
+        )
+        val multiFinal = SportsRules.gamesFor(
+            listOf(League.NFL, League.NBA),
+            emptyList(),
+            mapOf(League.NFL to nflFinal, League.NBA to nbaFinal),
+            now = 1_000_000_000L,
+        )
+        assertEquals(listOf("BOS", "DAL", "CIN"), multiFinal.map { it.awayAbbr })
+    }
 }

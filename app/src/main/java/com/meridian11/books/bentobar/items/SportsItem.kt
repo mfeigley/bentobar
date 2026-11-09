@@ -128,11 +128,12 @@ object SportsItem : ItemType("sports", R.string.item_sports_title, Sym.STAR, R.s
             return ItemState(icon = Sym.STAR, filled = false, text = null, desc = d, tooltip = d)
         }
 
+        val now = Now.wall()
         val teams = SportsRules.teams(item)
         val pinned = SportsRules.pinnedIds(item)
-        val allGames = SportsRules.gamesFor(leagues, teams, bMap, pinned)
-        val anyLive = allGames.any { it.state == GameState.LIVE }
-        val shownGames = SportsRules.barGames(allGames, SportsRules.liveOnly(item), pinned)
+        val allGames = SportsRules.gamesFor(leagues, teams, bMap, pinned, now)
+        val anyLive = allGames.any { it.inLiveRotation(now) }
+        val shownGames = SportsRules.barGames(allGames, SportsRules.liveOnly(item), pinned, now)
 
         if (shownGames.isEmpty()) {
             val d = Env.str(if (SportsRules.liveOnly(item) && allGames.isNotEmpty()) R.string.sports_no_live_games else R.string.sports_no_games)
@@ -141,9 +142,9 @@ object SportsItem : ItemType("sports", R.string.item_sports_title, Sym.STAR, R.s
 
         val turns = shownGames.map { g -> SportsRules.barText(g, formatStartTime(g.startEpochMs)) }
         val turnSec = SportsRules.turnSec(item)
-        val idx = ((Now.wall() / 1000L) / turnSec).mod(turns.size)
+        val idx = ((now / 1000L) / turnSec).mod(turns.size)
         val current = shownGames[idx]
-        val isPinnedLive = current.state == GameState.LIVE && current.id in pinned
+        val isPinnedLive = current.inLiveRotation(now) && current.id in pinned
         val icon = when {
             isPinnedLive -> Sym.PUSH_PIN
             current.state == GameState.LIVE -> Sym.PLAY_CIRCLE
