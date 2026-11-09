@@ -88,8 +88,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Direct-boot aware so Android binds the service across a restart on multi-user desktop
+             builds instead of skipping it while locked; BarService waits for user unlock before
+             touching credential-encrypted storage or drawing. -->
         <service
             android:name=".bar.BarService"
+            android:directBootAware="true"
             android:exported="true"
             android:label="@string/a11y_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

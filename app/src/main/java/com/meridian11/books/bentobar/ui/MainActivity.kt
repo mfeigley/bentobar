@@ -144,6 +144,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        (Env.service as? BarService)?.wake()
         Setup.refresh(this)
         Ticker.start("settings")
         Chips.update(this)

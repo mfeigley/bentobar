@@ -106,5 +106,8 @@ class ManifestTest {
         assertEquals(setOf(".ui.MainActivity", ".ui.BarMenuActivity", ".bar.BarService", ".tile.BarTile", ".tile.AwakeTile", ".tile.TimerTile",
             ".items.MediaAccess"), exported)
         for (service in application.all("service")) assertNotNull(service.attr("name"), service.attr("permission").takeIf { it.isNotEmpty() })
+        // Direct-boot aware so Android binds BarService across a device restart instead of skipping it while locked.
+        val barService = application.all("service").single { it.attr("name") == ".bar.BarService" }
+        assertEquals("true", barService.attr("directBootAware"))
     }
 }

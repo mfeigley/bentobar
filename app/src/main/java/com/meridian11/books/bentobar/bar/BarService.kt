@@ -62,19 +62,88 @@ import java.util.concurrent.Executors
  * actions of the Tools menu when asked. It doesn't observe keys, touches or other apps' windows.
  */
 class BarService : AccessibilityService() {
+    private val main = Handler(Looper.getMainLooper())
     private var bar: BarController? = null
-
-    override fun onServiceConnected() {
-        Env.init(this)
-        Env.service = this
-        bar?.stop() // connected again without an unbind: the old strip's windows mustn't stay up
-        bar = BarController(this).also { it.start() }
-        Chips.update(this)
-        com.meridian11.books.bentobar.ui.Setup.refresh(this)
-        Log.i(TAG, "service connected")
+    private var connected = false
+    private var waitingUnlock = false
+    private val unlockCheck = Runnable { startWhenUnlocked() }
+    private val unlockReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_USER_UNLOCKED) startWhenUnlocked()
+            else main.postDelayed(unlockCheck, 250)
+            scheduleUnlockChecks()
+        }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent) { bar?.onEvent(event) }
+    override fun onServiceConnected() {
+        connected = true
+        bar?.stop() // connected again without an unbind: the old strip's windows mustn't stay up
+        bar = null
+        if (!startWhenUnlocked()) {
+            watchUnlock()
+            scheduleUnlockChecks()
+            Log.i(TAG, "service connected before unlock; waiting for user storage")
+        }
+    }
+
+    /**
+     * Starts the bar once credential-encrypted storage is unlocked. During Direct Boot (the lock
+     * screen right after a restart), touching SharedPreferences or no-backup storage would throw
+     * and cause Android to mark the service crashed until toggled off and on again.
+     */
+    private fun startWhenUnlocked(): Boolean {
+        if (!connected) return false
+        if (bar != null) return true
+        if (!Env.tryInit(this)) return false
+        unwatchUnlock()
+        main.removeCallbacks(unlockCheck)
+        Env.service = this
+        val next = BarController(this)
+        try {
+            next.start()
+            bar = next
+        } catch (t: Throwable) {
+            Log.w(TAG, "bar start deferred: ${t.javaClass.simpleName}", t)
+            runCatching { next.stop() }
+            if (Env.service === this) Env.service = null
+            scheduleUnlockChecks()
+            return false
+        }
+        runCatching { Chips.update(this) }
+        runCatching { com.meridian11.books.bentobar.ui.Setup.refresh(this) }
+        Log.i(TAG, "service connected")
+        return true
+    }
+
+    private fun watchUnlock() {
+        if (waitingUnlock) return
+        waitingUnlock = true
+        registerReceiver(unlockReceiver, IntentFilter().apply {
+            addAction(Intent.ACTION_USER_UNLOCKED)
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_SCREEN_ON)
+        })
+    }
+
+    private fun unwatchUnlock() {
+        if (!waitingUnlock) return
+        waitingUnlock = false
+        runCatching { unregisterReceiver(unlockReceiver) }
+    }
+
+    private fun scheduleUnlockChecks() {
+        main.removeCallbacks(unlockCheck)
+        for (delay in longArrayOf(500L, 1_500L, 4_000L, 10_000L)) {
+            main.postDelayed(unlockCheck, delay)
+        }
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        val b = bar
+        if (b != null) b.onEvent(event)
+        else if (connected && Env.isUnlocked(this)) main.postDelayed(unlockCheck, 250)
+    }
+
     override fun onInterrupt() {}
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -90,12 +159,22 @@ class BarService : AccessibilityService() {
      * (UiAutomation, e.g. `uiautomator dump`, unbinds every accessibility service while it runs.)
      */
     private fun shutdown() {
+        connected = false
+        unwatchUnlock()
+        main.removeCallbacksAndMessages(null)
         val stopping = bar
         bar = null // first: whatever stop() does, it runs once per controller
         stopping?.stop()
         if (Env.service === this) Env.service = null
-        Chips.update(this)
-        com.meridian11.books.bentobar.ui.Setup.refresh(this)
+        if (Env.ready) {
+            runCatching { Chips.update(this) }
+            runCatching { com.meridian11.books.bentobar.ui.Setup.refresh(this) }
+        }
+    }
+
+    fun wake() {
+        val b = bar
+        if (b != null) b.nudge() else if (connected) startWhenUnlocked()
     }
 
     fun controller(): BarController? = bar
@@ -173,8 +252,9 @@ class BarController(private val service: AccessibilityService) {
      */
     private val poll = object : Runnable {
         override fun run() {
-            if (!pm.isInteractive) return // screen off: nothing to show; SCREEN_ON restarts this
-            if (strip.shown) lightCheck() else check(full = false)
+            if (!started || !pm.isInteractive) return // screen off: nothing to show; SCREEN_ON / USER_PRESENT restarts this
+            if (strip.shown) lightCheck()
+            else check(full = snap == null || SystemClock.uptimeMillis() - lastFullScan > 10_000)
             main.postDelayed(this, if (strip.shown) 2_000 else 5_000)
         }
     }
@@ -213,18 +293,36 @@ class BarController(private val service: AccessibilityService) {
 
     private val screen = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
-            if (i.action == Intent.ACTION_SCREEN_OFF) closeMenu(now = true)
-            updateAwake()
-            main.post(scanNow)
-            if (i.action == Intent.ACTION_SCREEN_ON) {
-                main.removeCallbacks(poll); main.postDelayed(poll, 2_000)
-                // The chip's next change is timed on a clock that stops while the device sleeps: catch up.
-                Chips.update(service)
+            if (i.action == Intent.ACTION_SCREEN_OFF) {
+                closeMenu(now = true)
+                updateAwake()
+                main.post(scanNow)
+                return
             }
+            updateAwake()
+            scheduleWakeScans()
+            // The chip's next change is timed on a clock that stops while the device sleeps: catch up.
+            Chips.update(service)
         }
     }
     // A live wallpaper can report new colours every second: a quick cause, two readings.
     private val wallpaper = WallpaperManager.OnColorsChangedListener { _, _ -> readSoon(ColorWatch.Cause.QUICK, 300) }
+
+    /**
+     * Scans across the moments SystemUI takes to settle its desktop status bar after waking or
+     * signing in, and makes sure [poll] is running even if the screen was already on before unlock.
+     */
+    private fun scheduleWakeScans() {
+        main.removeCallbacks(scanNow)
+        for (delay in longArrayOf(0L, 350L, 1_000L, 2_500L)) main.postDelayed(scanNow, delay)
+        main.removeCallbacks(poll)
+        main.postDelayed(poll, 2_000)
+    }
+
+    fun nudge() {
+        if (!started) return
+        if (!strip.shown) scheduleWakeScans() else lightCheck()
+    }
 
     fun start() {
         started = true
@@ -244,6 +342,7 @@ class BarController(private val service: AccessibilityService) {
         }
         scope.launch { DisplaysItem.keepingAwake.collect { updateAwake() } }
         scan()
+        for (delay in longArrayOf(500L, 1_500L, 4_000L)) main.postDelayed(scanNow, delay)
         main.postDelayed(poll, 2_000)
     }
 
@@ -314,13 +413,23 @@ class BarController(private val service: AccessibilityService) {
      */
     private fun check(full: Boolean) {
         if (!started) return
+        try {
+            checkNow(full)
+        } catch (e: RuntimeException) {
+            Log.w(tag, "status bar check failed: ${e.javaClass.simpleName}")
+        }
+    }
+
+    private fun checkNow(full: Boolean) {
+        val locked = km.isKeyguardLocked
+        val interactive = pm.isInteractive
         val metrics = wm.currentWindowMetrics
         val screenW = metrics.bounds.width()
         val inset = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top
         val maxH = (if (inset > 0) inset else (48 * density).toInt()) + 4
-        val windows = runCatching { service.windows }.getOrDefault(emptyList())
+        val windows = if (!interactive || locked) emptyList() else runCatching { service.windows }.getOrDefault(emptyList())
         overlayIds = windows.filter { it.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }.map { it.id }.toSet()
-        val barWindow = StatusBarScan.findWindow(windows, screenW, maxH)
+        val barWindow = if (!interactive || locked) null else StatusBarScan.findWindow(windows, screenW, maxH)
         val barBounds = barWindow?.let { Rect().also { r -> it.getBoundsInScreen(r) } }
         val prev = snap
         val s = when {
@@ -351,9 +460,9 @@ class BarController(private val service: AccessibilityService) {
                 r.height() >= s.bar.height() * 4 && w.title?.contains("Screenshot", ignoreCase = true) != true
         }
         val covered = cover != null
-        val show = s != null && !covered && cfg.enabled && pm.isInteractive && !km.isKeyguardLocked
+        val show = s != null && !covered && cfg.enabled && interactive && !locked
         if (!show) BarStatus.current.value = when {
-            !pm.isInteractive || km.isKeyguardLocked -> BarStatus.ASLEEP
+            !interactive || locked -> BarStatus.ASLEEP
             !cfg.enabled -> BarStatus.HIDDEN_BY_USER
             s == null -> BarStatus.NO_BAR
             else -> BarStatus.COVERED

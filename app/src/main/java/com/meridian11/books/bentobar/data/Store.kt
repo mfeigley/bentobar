@@ -46,9 +46,11 @@ object Store {
     @Synchronized
     fun init(context: Context) {
         if (::prefs.isInitialized) return
-        prefs = context.applicationContext.getSharedPreferences("bentobar", Context.MODE_PRIVATE)
-        consentState.value = prefs.getString(KEY_CONSENT, null)?.let { runCatching { Consent.valueOf(it) }.getOrNull() } ?: Consent.NOT_ASKED
-        val raw = prefs.getString(KEY, null)
+        val p = context.applicationContext.getSharedPreferences("bentobar", Context.MODE_PRIVATE)
+        val storedConsent = p.getString(KEY_CONSENT, null)?.let { runCatching { Consent.valueOf(it) }.getOrNull() } ?: Consent.NOT_ASKED
+        val raw = p.getString(KEY, null)
+        prefs = p
+        consentState.value = storedConsent
         val read = raw?.let(::decode)
         if (raw != null && read == null) {
             // Not logged as it is: it can hold a city or a note. Kept, so that starting fresh loses nothing for good.

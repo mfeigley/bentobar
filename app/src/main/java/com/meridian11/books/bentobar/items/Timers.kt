@@ -208,7 +208,7 @@ object Timers {
 /** AlarmManager lands here when a countdown ends. */
 class TimerAlarm : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        Env.init(context)
+        if (!Env.tryInit(context)) return
         Timers.due()
     }
 }

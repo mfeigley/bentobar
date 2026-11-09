@@ -244,7 +244,7 @@ class ChipAction : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        Env.init(context)
+        if (!Env.tryInit(context)) return
         when (intent.action) {
             TOGGLE -> Timers.toggle()
             PLUS -> Timers.add(60_000)

@@ -19,10 +19,10 @@ private fun TileService.openApp() {
 
 /** Shows or hides BentoBar's items, e.g. before presenting. */
 class BarTile : TileService() {
-    override fun onStartListening() { Env.init(this); refresh() }
+    override fun onStartListening() { if (!Env.tryInit(this)) return; refresh() }
 
     override fun onClick() {
-        Env.init(this)
+        if (!Env.tryInit(this)) return
         if (Env.service == null) { openApp(); return }
         Store.update { it.copy(enabled = !it.enabled) }
         refresh()
@@ -40,10 +40,10 @@ class BarTile : TileService() {
 
 /** Keeps the screen on until switched off (needs BentoBar, which owns the window). */
 class AwakeTile : TileService() {
-    override fun onStartListening() { Env.init(this); refresh() }
+    override fun onStartListening() { if (!Env.tryInit(this)) return; refresh() }
 
     override fun onClick() {
-        Env.init(this)
+        if (!Env.tryInit(this)) return
         if (Env.service == null) { openApp(); return }
         Caffeine.toggle(null)
         refresh()
@@ -65,10 +65,10 @@ class AwakeTile : TileService() {
 
 /** Starts, pauses and resumes BentoBar's timer (25 minutes unless one is running). */
 class TimerTile : TileService() {
-    override fun onStartListening() { Env.init(this); refresh() }
+    override fun onStartListening() { if (!Env.tryInit(this)) return; refresh() }
 
     override fun onClick() {
-        Env.init(this)
+        if (!Env.tryInit(this)) return
         if (Timers.state.value == null) Timers.startTimer(25 * 60_000L) else Timers.toggle()
         refresh()
     }

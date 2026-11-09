@@ -40,29 +40,57 @@ object Env {
     /** The running accessibility service (global actions, overlay windows), or null. */
     @Volatile var service: AccessibilityService? = null
 
+    /** True once credential-encrypted storage and all process singletons have finished [init]. */
+    @Volatile var ready = false
+        private set
+
     val net = NetSampler()
     val cpu = CpuSampler()
     val mem = MemSampler()
     val battery = BatterySampler()
     val storage = StorageSampler()
 
+    /** Whether the user's credential-encrypted storage is unlocked (false during Direct Boot). */
+    fun isUnlocked(context: Context): Boolean =
+        context.getSystemService(android.os.UserManager::class.java)?.isUserUnlocked != false
+
+    /**
+     * Initialises process state once credential-encrypted storage is available. Returns false
+     * while the device is still at the post-restart lock screen (or finishing unlock) instead of
+     * throwing an uncaught exception that would stop Android from rebinding the service.
+     */
+    @Synchronized
+    fun tryInit(context: Context): Boolean {
+        if (ready) return true
+        if (!isUnlocked(context)) return false
+        return try {
+            init(context)
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "init deferred until user storage is ready: ${t.javaClass.simpleName}")
+            false
+        }
+    }
+
     @Synchronized
     fun init(context: Context) {
-        if (::app.isInitialized) return
-        app = context.applicationContext
-        Store.init(app)
+        if (ready) return
+        val a = context.applicationContext
+        app = a
+        Store.init(a)
         // The switches for the three online services and the user's keys: in the no-backup directory, which
         // Android leaves out of backups and device transfers. Then the rules for going online at all.
-        Online.init(app.noBackupFilesDir)
+        Online.init(a.noBackupFilesDir)
         wireOnline()
         FlightItem.sweepAtStart()
-        NowPlaying.init(app)
+        NowPlaying.init(a)
         // Before Timers: a timer that finished while BentoBar wasn't running ends in init, and its
         // chip update asks the calendar.
-        Calendar.init(app)
-        com.meridian11.books.bentobar.util.Fonts.init(app)
-        Timers.init(app)
-        Caffeine.init(app)
+        Calendar.init(a)
+        com.meridian11.books.bentobar.util.Fonts.init(a)
+        Timers.init(a)
+        Caffeine.init(a)
+        ready = true
     }
 
     /**
