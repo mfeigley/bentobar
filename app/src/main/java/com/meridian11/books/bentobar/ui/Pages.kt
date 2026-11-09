@@ -98,7 +98,7 @@ fun AddPage(onAdded: (String) -> Unit) {
         AddGroup(R.string.add_group_time, listOf("calendar", "event", "clock", "timer", "countdown")),
         AddGroup(R.string.add_group_tools, listOf("caffeine", "media", "sound", "clipboard", "tools", "shortcut", "folder", "app", "text", "spacer")),
         // The only items that go online, in a group that says so.
-        AddGroup(R.string.add_group_online, listOf("weather", "air", "flight", "stocks", "fx"), caption = R.string.add_group_online_caption),
+        AddGroup(R.string.add_group_online, listOf("weather", "air", "flight", "stocks", "fx", "sports"), caption = R.string.add_group_online_caption),
     )
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp)) {
         groups.forEach { (group, types, caption) ->
@@ -343,6 +343,7 @@ fun SetupPage(activity: Activity, setup: SetupState, onTurnOn: () -> Unit) {
                 Text(stringResource(R.string.stocks_remove_key), color = MaterialTheme.colorScheme.error)
             }
             OnlineSwitch(Online.Service.FRANKFURTER, online, stringResource(R.string.setup_online_fx), stringResource(R.string.setup_online_fx_first))
+            OnlineSwitch(Online.Service.ESPN, online, stringResource(R.string.setup_online_sports), stringResource(R.string.setup_online_sports_first))
             Text(stringResource(R.string.setup_online_off_note), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -451,6 +452,7 @@ fun AboutPage() {
         Bullet(stringResource(R.string.about_privacy_flight))
         Bullet(stringResource(R.string.about_privacy_stocks))
         Bullet(stringResource(R.string.about_privacy_fx))
+        Bullet(stringResource(R.string.about_privacy_sports))
         Bullet(stringResource(R.string.about_privacy_clipboard))
         Bullet(stringResource(R.string.about_privacy_media))
         Bullet(stringResource(R.string.about_privacy_others))
@@ -472,6 +474,7 @@ fun AboutPage() {
         Bullet(stringResource(R.string.about_credit_airlabs))
         Bullet(stringResource(R.string.about_credit_finnhub))
         Bullet(stringResource(R.string.about_credit_frankfurter))
+        Bullet(stringResource(R.string.about_credit_espn))
         // Open-Meteo's licence asks for the credit and a link to it.
         TextButton(onClick = { Env.launch(Intent(Intent.ACTION_VIEW, Uri.parse(OPEN_METEO_URL))) }, modifier = Modifier.offset(x = (-12).dp)) {
             Text(stringResource(R.string.weather_open_site))

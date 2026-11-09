@@ -18,7 +18,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Googlebook_OS-Android_17-133F43" alt="Googlebook OS, Android 17">
-  <img src="https://img.shields.io/badge/goes_online-only_for_five_items_you_set_up-2E7D32" alt="Goes online only for five items you set up">
+  <img src="https://img.shields.io/badge/goes_online-only_for_six_items_you_set_up-2E7D32" alt="Goes online only for six items you set up">
   <img src="https://img.shields.io/badge/license-MIT-555555" alt="MIT license">
   <img src="https://img.shields.io/badge/developed_on-a_Googlebook-1F6F66" alt="Developed on a Googlebook">
 </p>
@@ -84,6 +84,7 @@ hides when an app goes full screen or the screen locks.
 | **Flight** *(online)* | a line with the plane where the flight is, a countdown to departure with the gate, then to landing, and delays | times at both airports, terminal, gate, baggage belt; a choice where a number flies more than once a day. From AirLabs, with a free key of your own |
 | **US stocks** *(online)* | US stocks you pick, one at a time (`AAPL 227.52 ▲1.2%`) for 3 seconds to a minute each, as you choose; can pop out on a big move | each stock's price, day change and range, and the market's hours. From [Finnhub](https://finnhub.io), with a free key of your own |
 | **Exchange rates** *(online)* | currency pairs you follow (`EUR/USD 1.0942`), rotating in the bar; can pop out on a big daily move | rate and daily % change for up to 6 pairs, plus an inline currency converter. From the European Central Bank via [Frankfurter](https://frankfurter.dev) (no key needed) |
+| **Sports scores** *(online)* | live, final and upcoming games across NFL, NBA, MLB, NHL, college and soccer leagues (`TB 17-20 CHI Q4 4:12`), rotating in the bar; can pop out when a followed game is live | live scores with clock, quarter/inning, possession and down-and-distance, final scores and upcoming start times, filtered by your leagues and teams. From [ESPN](https://www.espn.com) (no key needed) |
 | **Tools** | toolbox | screenshot, lock, overview, all apps, power, settings shortcuts |
 | **Shortcut** | one action, as its icon, its name or both (📷 Screenshot) | none: a click does it. Screenshot, Report a bug (the Googlebook's Feedback app), lock, overview, all apps, notifications, Quick settings |
 | **App folder** / **App shortcut** | your apps | a grid of apps / one click to open |
@@ -152,7 +153,7 @@ with that access:
 
 BentoBar doesn't read other apps' windows and doesn't watch your keyboard, mouse or touches.
 
-**BentoBar goes online for five items only, and only after you set them up** on this device:
+**BentoBar goes online for six items only, and only after you set them up** on this device:
 
 - **Weather** sends [Open-Meteo](https://open-meteo.com) the city you search for, and for the forecast
   the coordinates of the city you pick, rounded to about a kilometre: about every 30 minutes while the
@@ -172,6 +173,10 @@ BentoBar doesn't read other apps' windows and doesn't watch your keyboard, mouse
   reference table of currencies, at most once an hour while the bar is on screen, and when you open
   its menu or press Refresh. No key is needed, and the pairs you follow and the converter's amounts are
   worked out on the device. Frankfurter sees your IP address, as any website does.
+- **Sports scores** asks [ESPN](https://www.espn.com) for the scoreboard of each league you select,
+  every minute while a game is live and every 15 minutes otherwise while the bar is on screen, and when
+  you open its menu or press Refresh. No key is needed, and team filtering is done on the device. ESPN
+  sees your IP address, as any website does.
 - **Flight** sends [AirLabs](https://airlabs.co) the flight number and your own AirLabs key: when you
   track a flight, when you press Refresh, and while it follows the flight (about every 3 hours, then
   every 30 minutes or sooner from 3 hours before departure until it lands). AirLabs sees your IP
@@ -182,7 +187,7 @@ BentoBar doesn't read other apps' windows and doesn't watch your keyboard, mouse
   press Search.
   Finnhub sees your IP address and can tie requests to your key's account. BentoBar ships no key.
 
-Requests can go to those four services and nowhere else (the code has no way to name another
+Requests can go to those five services and nowhere else (the code has no way to name another
 address), **Setup › Online services** switches each off, and a layout pasted from another install
 never turns them on. BentoBar sends nothing else anywhere: not your layout, your calendar, your
 clipboard, what's playing or anything it measures. It has no accounts of its own, no ads and no analytics, and it

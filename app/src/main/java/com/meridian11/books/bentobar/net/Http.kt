@@ -19,6 +19,8 @@ enum class Host(val domain: String) {
     FINNHUB("api.finnhub.io"),
     /** Reference exchange rates from the European Central Bank (Frankfurter). */
     FRANKFURTER("api.frankfurter.dev"),
+    /** Sports scores and schedules (ESPN). */
+    ESPN("site.api.espn.com"),
 }
 
 /**
@@ -79,7 +81,7 @@ object Http {
     const val READ_MS = 6_000
     /** A whole request, from asking to the last byte: an answer that trickles in is given up, so no load hangs on one. */
     const val TOTAL_MS = 15_000
-    const val MAX_BYTES = 256 * 1024
+    const val MAX_BYTES = 1024 * 1024
 
     /** Who may be asked right now. Closed until the app wires it. */
     @Volatile var allowed: (Host) -> Boolean = { false }

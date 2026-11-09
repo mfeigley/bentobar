@@ -237,9 +237,9 @@ Name no other company's app as a model or a comparison, in the app or anywhere h
   In desktop windowing, Settings opens in its own window and BentoBar's stays resumed, so onResume
   alone misses changes; and with strong skipping (Kotlin 2.x) a composable reading Android state
   inside isn't redrawn when its parameters are unchanged.
-- **Going online is five items' business, and each install's own decision.** Weather, Air quality, Exchange
-  rates, Flight and Stocks ask a service; nothing else does, and nothing the accessibility service or any other
-  item reads can get there (`net/` is the only way out, and only those five types name a service in
+- **Going online is six items' business, and each install's own decision.** Weather, Air quality, Exchange
+  rates, Sports scores, Flight and Stocks ask a service; nothing else does, and nothing the accessibility service or any other
+  item reads can get there (`net/` is the only way out, and only those six types name a service in
   `ItemType.online`).
   A service is asked only after its item was set up on this install: `data/Online.kt` records that
   outside the layout, so a pasted layout or a restored backup turns nothing on. Off (Setup › Online
@@ -257,7 +257,7 @@ Name no other company's app as a model or a comparison, in the app or anywhere h
   `HereKeeper`, pure and unit-tested; `WeatherHere` is the keeper on Android's location service).
   `ManifestTest` pins the permissions, the backup rules, cleartext off and the listener's entry;
   `HttpTest` and `HttpTransportTest` pin the hosts and what a request may carry; `OneWayOutTest` names
-  the files that may ask a service (`items/Weather*`, `Air*`, `Fx*`, `Flight*`, `AirLabs*`, `Stocks*`, `Finnhub*`) or read a key.
+  the files that may ask a service (`items/Weather*`, `Air*`, `Fx*`, `Sports*`, `Flight*`, `AirLabs*`, `Stocks*`, `Finnhub*`) or read a key.
 - **US stocks** (`StocksItem`, type "stocks", rules in `StocksRules`, requests and what is kept in `StocksLoad`, replies in
   `Finnhub`): US stocks only (Finnhub's free plan), with the user's own key; one quote request per stock,
   every 2 minutes while the market is open (`Market`: weekday hours in New York; a holiday is seen in quotes

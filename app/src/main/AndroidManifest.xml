@@ -2,10 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Five items go online, and only after the user set them up on this device: Weather and Air quality ask
-         Open-Meteo, Exchange rates asks Frankfurter, Flight asks AirLabs and US stocks asks Finnhub, the last two
-         with the user's own key. net/Http.kt names the hosts and is the only code that opens a connection; nothing
-         the accessibility service or any other item reads goes there. -->
+    <!-- Six items go online, and only after the user set them up on this device: Weather and Air quality ask
+         Open-Meteo, Exchange rates asks Frankfurter, Sports scores asks ESPN, Flight asks AirLabs and US stocks asks
+         Finnhub, the last two with the user's own key. net/Http.kt names the hosts and is the only code that opens a
+         connection; nothing the accessibility service or any other item reads goes there. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

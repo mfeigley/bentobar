@@ -18,7 +18,7 @@ object Items {
         CpuItem, NetworkItem, BatteryItem, MemoryItem, StorageItem, HeatItem, DevicesItem, DisplaysItem,
         CalendarItem, EventItem, ClockItem, TimerItem, CountdownItem,
         CaffeineItem, MediaItem, SoundItem, ClipboardItem, ToolsItem, ShortcutItem, FolderItem, AppItem, TextItem, SpacerItem,
-        WeatherItem, AirItem, FlightItem, StocksItem, FxItem,
+        WeatherItem, AirItem, FlightItem, StocksItem, FxItem, SportsItem,
     )
     private val byType = all.associateBy { it.type }
 

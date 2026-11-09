@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sports scores (ESPN). Every name here starts with sports_, item_sports_ or trigger_sports. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+    <string name="item_sports_title">Sports scores</string>
+    <string name="item_sports_desc">Live, final and upcoming sports scores and schedules from ESPN</string>
+    <string name="trigger_sports">Show when a game you follow is live</string>
+    <string name="trigger_sports_short">shows during live games</string>
+
+    <string name="sports_consent">Sports scores come from ESPN (site.api.espn.com). No key is needed. BentoBar asks for each followed league\'s scoreboard every minute while a game is live and the bar is on screen (or every 15 minutes otherwise), and when you open its menu or press Refresh; ESPN sees your IP address, as any website does.</string>
+    <string name="sports_turn_on">Turn on Sports scores</string>
+    <string name="sports_leagues_section">Leagues</string>
+    <string name="sports_leagues_help">Pick up to four leagues for this item.</string>
+    <string name="sports_teams_section">Favorite teams (optional)</string>
+    <string name="sports_teams_help">Leave empty to show all games in your chosen leagues, or add team abbreviations or names (such as CHI, TB, Bears or Lakers) to filter.</string>
+    <string name="sports_team_add_label">Add team (such as CHI, NYY or Bears)</string>
+    <string name="sports_team_add_button">Add</string>
+    <string name="sports_teams_full">Ten teams is the most one item filters by.</string>
+    <string name="sports_teams_all">Showing all teams in your selected leagues.</string>
+    <string name="sports_remove_team">Remove %1$s</string>
+    <string name="sports_live_only">Only show live games in the bar</string>
+    <string name="sports_live_only_help">When no game is live, the bar shows only the icon until kickoff or tip-off.</string>
+    <string name="sports_turn_label">Each game shows for</string>
+    <string name="sports_turn_help">With more than one game, the bar shows them in turn.</string>
+    <string name="sports_none_yet">No leagues selected</string>
+    <string name="sports_no_games">No games on the scoreboard right now</string>
+    <string name="sports_no_live_games">No live games right now</string>
+    <string name="sports_choose_leagues">Choose leagues…</string>
+    <string name="sports_edit">Edit leagues &amp; teams…</string>
+    <string name="sports_note">Scores and schedules from ESPN · %1$s</string>
+    <string name="sports_site">ESPN.com</string>
+    <string name="sports_desc_not_set_up">Sports scores: not turned on</string>
+    <string name="sports_desc_off">Sports scores: off</string>
+    <string name="sports_desc_loading">Sports scores: loading</string>
+    <string name="sports_desc_unavailable">Sports scores: unavailable</string>
+    <string name="sports_desc_live">Sports scores: %1$s</string>
+</resources>

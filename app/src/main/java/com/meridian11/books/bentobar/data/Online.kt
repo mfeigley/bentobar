@@ -9,8 +9,8 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
- * Whether BentoBar may ask an online service, and the user's own key for one that needs it. Five
- * items go online, Weather, Air quality, Exchange rates, Flight and Stocks, and each only after the user
+ * Whether BentoBar may ask an online service, and the user's own key for one that needs it. Six
+ * items go online, Weather, Air quality, Exchange rates, Sports scores, Flight and Stocks, and each only after the user
  * set it up on this install: that is what [turnOn] and [saveKey] record, and [turnOff] takes back.
  *
  * All of it belongs to this install and never travels. It is kept in one small file in Android's
@@ -25,6 +25,7 @@ object Online {
         AIRLABS("airLabs", setOf(Host.AIRLABS), needsKey = true),
         FINNHUB("finnhub", setOf(Host.FINNHUB), needsKey = true),
         FRANKFURTER("frankfurter", setOf(Host.FRANKFURTER), needsKey = false),
+        ESPN("espn", setOf(Host.ESPN), needsKey = false),
     }
 
     /**

@@ -33,7 +33,7 @@ class HttpTest {
     }
 
     @Test fun fourHostsAndNoOther() {
-        assertEquals(setOf("api.open-meteo.com", "air-quality-api.open-meteo.com", "geocoding-api.open-meteo.com", "airlabs.co", "api.finnhub.io", "api.frankfurter.dev"), Host.entries.map { it.domain }.toSet())
+        assertEquals(setOf("api.open-meteo.com", "air-quality-api.open-meteo.com", "geocoding-api.open-meteo.com", "airlabs.co", "api.finnhub.io", "api.frankfurter.dev", "site.api.espn.com"), Host.entries.map { it.domain }.toSet())
     }
 
     @Test fun everyAddressIsHttpsToOneOfThem() {

@@ -93,10 +93,10 @@ class DebugReceiver : BroadcastReceiver() {
                     Host.entries.joinToString(" ") { "${it.domain}=${Http.sent(it)}" } + " | " +
                         Online.Service.entries.joinToString(" ") { s -> "${s.id}: on=${Online.on(s)} setUp=${Online.setUp(s)} mayAsk=${Http.allowed(s.hosts.first())}" }
                 }
-                "online" -> { // online weather|flights|stocks|fx on|off (on only works once the item was set up here, as in Setup)
+                "online" -> { // online weather|flights|stocks|fx|sports on|off (on only works once the item was set up here, as in Setup)
                     val s = when (args[1]) {
-                        "weather" -> Online.Service.OPEN_METEO; "flights" -> Online.Service.AIRLABS; "stocks" -> Online.Service.FINNHUB; "fx" -> Online.Service.FRANKFURTER
-                        else -> error("weather, flights, stocks or fx")
+                        "weather" -> Online.Service.OPEN_METEO; "flights" -> Online.Service.AIRLABS; "stocks" -> Online.Service.FINNHUB; "fx" -> Online.Service.FRANKFURTER; "sports" -> Online.Service.ESPN
+                        else -> error("weather, flights, stocks, fx or sports")
                     }
                     if (args.getOrNull(2) == "on") Online.turnOn(s) else Online.turnOff(s)
                     "${s.id} on=${Online.on(s)}"
