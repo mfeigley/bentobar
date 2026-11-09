@@ -2,6 +2,12 @@ package com.meridian11.books.bentobar.items
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -12,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -24,14 +32,21 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.meridian11.books.bentobar.R
 import com.meridian11.books.bentobar.data.ItemConfig
 import com.meridian11.books.bentobar.data.Online
@@ -107,7 +122,10 @@ internal fun SportsMenu(item: ItemConfig, host: MenuHost) {
                     MenuNote(stringResource(R.string.sports_no_games))
                 } else {
                     games.take(12).forEach { g ->
-                        GameRow(g, showLeague = showLeagueBadge)
+                        GameRow(g, showLeague = showLeagueBadge) {
+                            host.close()
+                            Env.launch(Intent(Intent.ACTION_VIEW, Uri.parse(SportsRules.gamePage(g))))
+                        }
                     }
                 }
                 val newest = boards.values.filter { it.fetchedAt > 0 }.maxByOrNull { it.fetchedAt }
@@ -136,16 +154,30 @@ internal fun SportsMenu(item: ItemConfig, host: MenuHost) {
 }
 
 @Composable
-private fun GameRow(g: Game, showLeague: Boolean) {
+private fun GameRow(g: Game, showLeague: Boolean, onClick: () -> Unit) {
     val quiet = MaterialTheme.colorScheme.onSurfaceVariant
     val startTime = if (g.state == GameState.UPCOMING) SportsItem.formatStartTime(g.startEpochMs) else null
     val spoken = SportsRules.spokenGame(g, startTime)
+    val opensBrowser = stringResource(R.string.common_opens_browser, "${g.league.code}: $spoken")
     val awayWon = g.state == GameState.FINAL && g.awayScore != null && g.homeScore != null && g.awayScore > g.homeScore
     val homeWon = g.state == GameState.FINAL && g.awayScore != null && g.homeScore != null && g.homeScore > g.awayScore
 
+    val source = remember { MutableInteractionSource() }
+    val hovered by source.collectIsHoveredAsState()
+    val focused by source.collectIsFocusedAsState()
+
     Column(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            .clearAndSetSemantics { contentDescription = "${g.league.code}: $spoken" },
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (hovered || focused) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f) else Color.Transparent)
+            .hoverable(source)
+            .clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .padding(horizontal = 8.dp, vertical = 5.dp)
+            .clearAndSetSemantics {
+                contentDescription = opensBrowser
+                role = Role.Button
+            },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             val header = if (showLeague) "${g.league.code} · ${startTime ?: g.statusDetail}" else (startTime ?: g.statusDetail)
@@ -166,7 +198,13 @@ private fun GameRow(g: Game, showLeague: Boolean) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.width(4.dp))
             }
+            SymIcon(
+                Sym.OPEN_IN_NEW,
+                size = 13.sp,
+                color = if (hovered || focused) MaterialTheme.colorScheme.onSurface else quiet.copy(alpha = 0.7f),
+            )
         }
         TeamScoreLine(
             abbr = g.awayAbbr,

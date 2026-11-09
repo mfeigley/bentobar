@@ -96,6 +96,7 @@ object SportsRules {
         val possessionAbbr: String? = null,
         val situationText: String? = null,
         val startEpochMs: Long? = null,
+        val webLink: String? = null,
     ) {
         val margin: Int? get() = if (awayScore != null && homeScore != null) abs(awayScore - homeScore) else null
 
@@ -287,6 +288,7 @@ object SportsRules {
 
         val dateStr = (comp["date"] ?: ev["date"])?.jsonPrimitive?.content
         val startEpochMs = dateStr?.let(::parseIsoEpochMs)
+        val webLink = parseEspnLink(ev["links"] as? JsonArray)
 
         val shortStatus = compactStatus(league, state, clock, period, shortDetail)
         val detail = shortDetail.ifEmpty { shortStatus }
@@ -310,7 +312,35 @@ object SportsRules {
             possessionAbbr = possessionAbbr,
             situationText = situationText,
             startEpochMs = startEpochMs,
+            webLink = webLink,
         )
+    }
+
+    private fun parseEspnLink(links: JsonArray?): String? {
+        if (links == null) return null
+        for (el in links) {
+            val obj = el as? JsonObject ?: continue
+            val href = obj["href"]?.jsonPrimitive?.content?.trim() ?: continue
+            if (isSafeEspnPage(href)) return href
+        }
+        return null
+    }
+
+    internal fun isSafeEspnPage(href: String): Boolean =
+        href.startsWith("https://www.espn.com/") && href.length <= 200 && href.none { it.isWhitespace() || it.isISOControl() }
+
+    /** Returns the ESPN game page address for [g], falling back to the canonical ESPN game path. */
+    fun gamePage(g: Game): String {
+        g.webLink?.takeIf(::isSafeEspnPage)?.let { return it }
+        val cleanId = g.id.trim()
+        if (cleanId.isNotEmpty() && cleanId.all(Char::isDigit)) {
+            return if (g.league.sport == "soccer") {
+                "https://www.espn.com/soccer/match/_/gameId/$cleanId"
+            } else {
+                "https://www.espn.com/${g.league.slug}/game/_/gameId/$cleanId"
+            }
+        }
+        return "https://www.espn.com/"
     }
 
     internal fun parseIsoEpochMs(raw: String): Long? = try {

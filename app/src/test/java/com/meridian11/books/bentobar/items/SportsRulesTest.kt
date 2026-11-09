@@ -185,6 +185,7 @@ class SportsRulesTest {
         assertEquals("SEA", up.homeAbbr)
         assertNull(up.homeScore)
         assertNotNull(up.startEpochMs)
+        assertEquals("https://www.espn.com/nfl/game/_/gameId/401671703", SportsRules.gamePage(up))
     }
 
     @Test fun rejectsMalformedJsonAndHandlesEmptyEvents() {
