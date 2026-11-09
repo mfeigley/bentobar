@@ -41,7 +41,7 @@ object SportsRules {
     private const val SOON_AHEAD_MS = 30 * 60_000L
     private const val SOON_BEHIND_MS = 3 * 60 * 60_000L
 
-    const val BAR_CHARS = 20
+    const val BAR_CHARS = 30
     const val MOST_LEAGUES = 4
     const val MOST_TEAMS = 10
     const val TURN_SEC = 5
@@ -370,10 +370,15 @@ object SportsRules {
                     }
                     league.sport == "soccer" -> shortDetail.take(8).ifEmpty { "Live" }
                     else -> {
-                        val maxReg = if (league.sport == "hockey") 3 else 4
+                        val maxReg = when {
+                            league == League.NCAAB -> 2
+                            league.sport == "hockey" -> 3
+                            else -> 4
+                        }
                         val pLabel = when {
                             period <= 0 -> ""
                             period > maxReg -> if (period == maxReg + 1) "OT" else "${period - maxReg}OT"
+                            league == League.NCAAB -> "${period}H"
                             league.sport == "hockey" -> "P$period"
                             else -> "Q$period"
                         }
@@ -382,7 +387,7 @@ object SportsRules {
                         } else if (!clock.isNullOrEmpty() && clock != "0:00" && clock != "0.0" && pLabel.isNotEmpty()) {
                             "$pLabel $clock"
                         } else {
-                            pLabel.ifEmpty { shortDetail.take(8).ifEmpty { "Live" } }
+                            pLabel.ifEmpty { shortDetail.take(10).ifEmpty { "Live" } }
                         }
                     }
                 }
@@ -433,10 +438,11 @@ object SportsRules {
                 val h = g.homeScore ?: 0
                 listOf(
                     "${g.awayAbbr} $a ${g.homeAbbr} $h · ${g.shortStatus}",
+                    "${g.awayAbbr} $a-${h} ${g.homeAbbr} · ${g.shortStatus}",
                     "${g.awayAbbr} $a-${h} ${g.homeAbbr} ${g.shortStatus}",
-                    "${g.awayAbbr} $a ${g.homeAbbr} $h",
+                    "${g.awayAbbr} $a ${g.homeAbbr} $h ${g.shortStatus}",
                     "${g.awayAbbr} $a-$h ${g.homeAbbr}",
-                ).firstOrNull(::fits) ?: "${g.awayAbbr}-${g.homeAbbr}"
+                ).firstOrNull(::fits) ?: "${g.awayAbbr} $a-$h ${g.homeAbbr} ${g.shortStatus}"
             }
             GameState.FINAL -> {
                 val a = g.awayScore ?: 0

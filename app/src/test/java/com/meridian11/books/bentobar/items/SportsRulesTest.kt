@@ -215,15 +215,26 @@ class SportsRulesTest {
         assertEquals(0, SportsRules.barGames(cowboysAndNiners, liveOnly = true).size)
     }
 
-    @Test fun formatsBarTextWithinTwentyCharactersAndChoosesScheduleAwareRefreshIntervals() {
+    @Test fun formatsBarTextWithClockAndQuarterAndChoosesScheduleAwareRefreshIntervals() {
         val board = SportsRules.read(League.NFL, scoreboardJson, now = 100_000L)!!
         for (g in board.games) {
             val text = SportsRules.barText(g, "7:20 PM")
             assertTrue("barText too long: $text", TextRules.fits(text, SportsRules.BAR_CHARS))
         }
-        assertEquals("TB 17 CHI 20 · Q4 4:12".takeIf { TextRules.fits(it, SportsRules.BAR_CHARS) } ?: "TB 17-20 CHI Q4 4:12", SportsRules.barText(board.games[0]))
+        assertEquals("TB 17 CHI 20 · Q4 4:12", SportsRules.barText(board.games[0]))
         assertEquals("DAL 27 IND 23 F", SportsRules.barText(board.games[1]))
         assertEquals("SF @ SEA · 7:20 PM", SportsRules.barText(board.games[2], "7:20 PM"))
+
+        // High-scoring NBA game with double-digit clock still includes quarter and clock
+        val nbaLive = board.games[0].copy(
+            league = League.NBA,
+            awayAbbr = "BOS",
+            awayScore = 112,
+            homeAbbr = "MIL",
+            homeScore = 104,
+            shortStatus = "Q4 11:42",
+        )
+        assertEquals("BOS 112 MIL 104 · Q4 11:42", SportsRules.barText(nbaLive))
 
         // Live game present -> 3 minutes
         assertEquals(SportsRules.LIVE_REFRESH_MS, SportsRules.every(board, now = 100_000L))
