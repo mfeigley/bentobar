@@ -96,6 +96,8 @@ data class ItemState(
      * changes. Null: none.
      */
     val turns: List<String>? = null,
+    /** Right-align [text] within its fixed-width [turns] / [widthKey] slot in the bar pill even when an icon is shown. */
+    val textEnd: Boolean = false,
 ) {
     /** For logs and dumps: never the words themselves, which can be a track's title, a city or a flight. */
     override fun toString() = "ItemState(icon=${icon != null}, text of ${text?.length ?: 0}, active=$active, tone=$tone)"

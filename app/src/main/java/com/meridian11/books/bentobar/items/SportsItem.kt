@@ -155,6 +155,7 @@ object SportsItem : ItemType("sports", R.string.item_sports_title, Sym.STAR, R.s
             filled = true,
             text = turns[idx],
             turns = if (turns.size > 1) turns else null,
+            textEnd = true,
             tone = if (anyLive) Tone.ACCENT else Tone.NORMAL,
             active = anyLive,
             desc = desc,

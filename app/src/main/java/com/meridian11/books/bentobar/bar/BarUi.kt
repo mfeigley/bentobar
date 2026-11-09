@@ -666,7 +666,7 @@ private fun ItemView(entry: StripEntry, look: StripLook, events: StripEvents, gl
             // An item that promises a length is held to it in width too: 8.5 dp a character at the usual text
             // size. The count decides what is said; this only catches scripts whose characters are wide.
             val cap = if (s.textLimit > 0) (8.5f * s.textLimit * look.textSp.value / 14f).dp else Dp.Unspecified
-            Text(s.text!!, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = if (iconShown) TextAlign.Start else TextAlign.End,
+            Text(s.text!!, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = if (s.textEnd || !iconShown) TextAlign.End else TextAlign.Start,
                 modifier = (if (slot != null) Modifier.widthIn(min = with(density) { slot.toDp() }) else Modifier).widthIn(max = cap),
                 style = textStyle)
         }
