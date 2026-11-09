@@ -635,6 +635,13 @@ private fun ItemView(entry: StripEntry, look: StripLook, events: StripEvents, gl
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
+        val templates = if (showText) (s.turns ?: if (s.widthKey != null) listOf(Fmt.widthTemplate(s.text!!)) else null) else null
+        val slot = templates?.let { tpls -> remember(tpls, textStyle) { tpls.maxOf { measurer.measure(it, textStyle, maxLines = 1).size.width } } }
+        val leadPx = if (showText && s.textEnd && slot != null) {
+            val w = remember(s.text, textStyle) { measurer.measure(s.text!!, textStyle, maxLines = 1).size.width }
+            (slot - w).coerceAtLeast(0)
+        } else 0
+        if (leadPx > 0) Spacer(Modifier.width(with(density) { leadPx.toDp() }))
         if (route != null) {
             RouteTrack(route, look, alert, rtl)
             // 6 dp to the words, as much as the item has at its two ends: the line is no glyph that belongs to them.
@@ -658,16 +665,13 @@ private fun ItemView(entry: StripEntry, look: StripLook, events: StripEvents, gl
                 else Modifier.slides(slider.steps, rtl, onHeld = { held = it }, onContext = { context() }) { level, done -> events.slide(entry.item, level, done) })
         }
         if (showText) {
-            // Texts that take turns sit in a place as wide as the widest of them; a ticking number in one sized for its widest reading.
-            val templates = s.turns ?: if (s.widthKey != null) listOf(Fmt.widthTemplate(s.text!!)) else null
-            val slot = templates?.let { tpls -> remember(tpls, textStyle) { tpls.maxOf { measurer.measure(it, textStyle, maxLines = 1).size.width } } }
-            // With an icon, the number stays next to it and the spare room trails; text alone sits at the end.
+            // With an icon, the number stays next to it and the spare room trails (unless [textEnd] puts the spare room before the icon); text alone sits at the end.
             val iconShown = route != null || (showIcon && (s.image != null || !s.icon.isNullOrEmpty()))
             // An item that promises a length is held to it in width too: 8.5 dp a character at the usual text
             // size. The count decides what is said; this only catches scripts whose characters are wide.
             val cap = if (s.textLimit > 0) (8.5f * s.textLimit * look.textSp.value / 14f).dp else Dp.Unspecified
             Text(s.text!!, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = if (s.textEnd || !iconShown) TextAlign.End else TextAlign.Start,
-                modifier = (if (slot != null) Modifier.widthIn(min = with(density) { slot.toDp() }) else Modifier).widthIn(max = cap),
+                modifier = (if (slot != null && !s.textEnd) Modifier.widthIn(min = with(density) { slot.toDp() }) else Modifier).widthIn(max = cap),
                 style = textStyle)
         }
     }
