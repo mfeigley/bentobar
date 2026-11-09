@@ -26,6 +26,9 @@
     <string name="sports_no_live_games">No live games right now</string>
     <string name="sports_choose_leagues">Choose leagues…</string>
     <string name="sports_edit">Edit leagues &amp; teams…</string>
+    <string name="sports_pin_game">Pin %1$s to the bar</string>
+    <string name="sports_unpin_game">Unpin %1$s</string>
+    <string name="sports_unpin_all">Unpin all games</string>
     <string name="sports_note">Scores and schedules from ESPN · %1$s</string>
     <string name="sports_site">ESPN.com</string>
     <string name="sports_desc_not_set_up">Sports scores: not turned on</string>

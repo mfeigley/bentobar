@@ -186,6 +186,29 @@ object SportsRules {
 
     fun turnSec(item: ItemConfig): Int = item.optInt("turnSec", TURN_SEC).let { if (it in TURNS) it else TURN_SEC }
 
+    fun pinnedIds(item: ItemConfig): Set<String> {
+        val raw = item.options["pinned"].orEmpty()
+        if (raw.isBlank()) return emptySet()
+        return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    }
+
+    fun withPinnedIds(item: ItemConfig, ids: Collection<String>): ItemConfig {
+        val clean = ids.map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(20)
+        return item.with("pinned", if (clean.isEmpty()) null else clean.joinToString(","))
+    }
+
+    fun togglePinned(item: ItemConfig, gameId: String, liveGameIds: Set<String> = emptySet()): ItemConfig {
+        val id = gameId.trim()
+        if (id.isEmpty()) return item
+        val current = pinnedIds(item).let { pinned ->
+            if (liveGameIds.isEmpty()) pinned else pinned.filterTo(LinkedHashSet()) { it in liveGameIds || it == id }
+        }
+        val next = if (id in current) current - id else current + id
+        return withPinnedIds(item, next)
+    }
+
+    fun clearPinned(item: ItemConfig): ItemConfig = item.with("pinned", null)
+
     // ---- parsing ESPN scoreboard JSON -------------------------------------------------------------
 
     fun read(league: League, jsonText: String, now: Long): Scoreboard? = try {
@@ -399,17 +422,22 @@ object SportsRules {
 
     /**
      * All games across [leagues] matching [teams] (or all games when [teams] is empty), ordered with
-     * LIVE games first, then FINAL games, then UPCOMING games.
+     * pinned LIVE games first, then other LIVE games, then FINAL games, then UPCOMING games.
      */
-    fun gamesFor(leagues: List<League>, teams: List<String>, boards: Map<League, Scoreboard>): List<Game> {
+    fun gamesFor(
+        leagues: List<League>,
+        teams: List<String>,
+        boards: Map<League, Scoreboard>,
+        pinnedIds: Set<String> = emptySet(),
+    ): List<Game> {
         val raw = leagues.flatMap { boards[it]?.games.orEmpty() }
         val filtered = if (teams.isEmpty()) raw else raw.filter { g -> teams.any { g.matchesTeam(it) } }
         return filtered.sortedWith(
             compareBy<Game> {
                 when (it.state) {
-                    GameState.LIVE -> 0
-                    GameState.FINAL -> 1
-                    GameState.UPCOMING -> 2
+                    GameState.LIVE -> if (it.id in pinnedIds) 0 else 1
+                    GameState.FINAL -> 2
+                    GameState.UPCOMING -> 3
                 }
             }.thenBy { it.startEpochMs ?: Long.MAX_VALUE },
         )
@@ -417,12 +445,15 @@ object SportsRules {
 
     /**
      * Games to rotate in the status bar:
+     * - When one or more LIVE games are pinned in [pinnedIds], only those pinned LIVE games.
      * - When [liveOnly] is true, only LIVE games.
      * - Otherwise, LIVE games when any game is currently live, or all matching games when none is live.
      */
-    fun barGames(games: List<Game>, liveOnly: Boolean): List<Game> {
+    fun barGames(games: List<Game>, liveOnly: Boolean, pinnedIds: Set<String> = emptySet()): List<Game> {
         val live = games.filter { it.state == GameState.LIVE }
+        val pinnedLive = if (pinnedIds.isEmpty()) emptyList() else live.filter { it.id in pinnedIds }
         return when {
+            pinnedLive.isNotEmpty() -> pinnedLive
             liveOnly -> live
             live.isNotEmpty() -> live
             else -> games

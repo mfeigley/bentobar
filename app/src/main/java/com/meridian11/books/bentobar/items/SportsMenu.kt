@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -18,7 +19,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButton
@@ -50,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.meridian11.books.bentobar.R
 import com.meridian11.books.bentobar.data.ItemConfig
 import com.meridian11.books.bentobar.data.Online
+import com.meridian11.books.bentobar.data.Store
 import com.meridian11.books.bentobar.items.SportsRules.Game
 import com.meridian11.books.bentobar.items.SportsRules.GameState
 import com.meridian11.books.bentobar.items.SportsRules.League
@@ -76,6 +80,7 @@ internal fun SportsMenu(item: ItemConfig, host: MenuHost) {
     val on = Online.Service.ESPN in online.on
     val leagues = remember(item) { SportsRules.leagues(item) }
     val teams = remember(item) { SportsRules.teams(item) }
+    val pinnedIds = remember(item) { SportsRules.pinnedIds(item) }
     val title = stringResource(R.string.item_sports_title)
     LaunchedEffect(item.id, on) { SportsItem.opened(item) }
 
@@ -115,17 +120,31 @@ internal fun SportsMenu(item: ItemConfig, host: MenuHost) {
             }
         }
         else -> {
-            val games = SportsRules.gamesFor(leagues, teams, boards)
+            val games = SportsRules.gamesFor(leagues, teams, boards, pinnedIds)
+            val liveGameIds = remember(games) { games.filter { it.state == GameState.LIVE }.mapTo(HashSet()) { it.id } }
+            val anyPinnedLive = games.any { it.state == GameState.LIVE && it.id in pinnedIds }
             val showLeagueBadge = leagues.size > 1
             MenuCard(Sym.STAR, title, subtitle.ifEmpty { null }) {
                 if (games.isEmpty()) {
                     MenuNote(stringResource(R.string.sports_no_games))
                 } else {
                     games.take(12).forEach { g ->
-                        GameRow(g, showLeague = showLeagueBadge) {
-                            host.close()
-                            Env.launch(Intent(Intent.ACTION_VIEW, Uri.parse(SportsRules.gamePage(g))))
-                        }
+                        val isPinned = g.state == GameState.LIVE && g.id in pinnedIds
+                        GameRow(
+                            g = g,
+                            showLeague = showLeagueBadge,
+                            isPinned = isPinned,
+                            onTogglePin = if (g.state == GameState.LIVE) {
+                                {
+                                    Store.updateItem(item.id) { SportsRules.togglePinned(it, g.id, liveGameIds) }
+                                    Ticker.refresh(SportsItem.type)
+                                }
+                            } else null,
+                            onClick = {
+                                host.close()
+                                Env.launch(Intent(Intent.ACTION_VIEW, Uri.parse(SportsRules.gamePage(g))))
+                            },
+                        )
                     }
                 }
                 val newest = boards.values.filter { it.fetchedAt > 0 }.maxByOrNull { it.fetchedAt }
@@ -140,6 +159,12 @@ internal fun SportsMenu(item: ItemConfig, host: MenuHost) {
                     MenuNote(stringResource(R.string.sports_note, updated))
                 }
                 MenuDivider()
+                if (anyPinnedLive) {
+                    MenuEntry(Sym.PUSH_PIN, stringResource(R.string.sports_unpin_all)) {
+                        Store.updateItem(item.id) { SportsRules.clearPinned(it) }
+                        Ticker.refresh(SportsItem.type)
+                    }
+                }
                 MenuEntry(Sym.REFRESH, stringResource(R.string.common_refresh)) { SportsItem.refresh(item) }
                 MenuEntry(Sym.EDIT, stringResource(R.string.sports_edit)) { host.openItemSettings(item.id) }
                 val site = stringResource(R.string.sports_site)
@@ -154,7 +179,13 @@ internal fun SportsMenu(item: ItemConfig, host: MenuHost) {
 }
 
 @Composable
-private fun GameRow(g: Game, showLeague: Boolean, onClick: () -> Unit) {
+private fun GameRow(
+    g: Game,
+    showLeague: Boolean,
+    isPinned: Boolean,
+    onTogglePin: (() -> Unit)?,
+    onClick: () -> Unit,
+) {
     val quiet = MaterialTheme.colorScheme.onSurfaceVariant
     val startTime = if (g.state == GameState.UPCOMING) SportsItem.formatStartTime(g.startEpochMs) else null
     val spoken = SportsRules.spokenGame(g, startTime)
@@ -174,7 +205,7 @@ private fun GameRow(g: Game, showLeague: Boolean, onClick: () -> Unit) {
             .clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand)
             .padding(horizontal = 8.dp, vertical = 5.dp)
-            .clearAndSetSemantics {
+            .semantics {
                 contentDescription = opensBrowser
                 role = Role.Button
             },
@@ -199,6 +230,26 @@ private fun GameRow(g: Game, showLeague: Boolean, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.width(4.dp))
+            }
+            if (onTogglePin != null) {
+                val matchup = "${g.awayAbbr} vs ${g.homeAbbr}"
+                val pinLabel = stringResource(if (isPinned) R.string.sports_unpin_game else R.string.sports_pin_game, matchup)
+                Box(
+                    Modifier.size(24.dp)
+                        .clip(CircleShape)
+                        .clickable(role = Role.Button, onClick = onTogglePin)
+                        .pointerHoverIcon(PointerIcon.Hand),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SymIcon(
+                        Sym.PUSH_PIN,
+                        size = 15.sp,
+                        filled = isPinned,
+                        contentDescription = pinLabel,
+                        color = if (isPinned) MaterialTheme.colorScheme.primary else quiet,
+                    )
+                }
+                Spacer(Modifier.width(2.dp))
             }
             SymIcon(
                 Sym.OPEN_IN_NEW,

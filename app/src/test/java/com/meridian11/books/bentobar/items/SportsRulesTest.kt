@@ -285,5 +285,18 @@ class SportsRulesTest {
 
         item = SportsRules.removeTeam(item, "BEARS")
         assertEquals(listOf("KC"), SportsRules.teams(item))
+
+        // Pinning a single live game shows only that game; pinning multiple cycles only through the pinned games
+        val sampleLive = SportsRules.sample("live", League.NFL, now = 100_000L)!!
+        val boards = mapOf(League.NFL to sampleLive)
+        item = SportsRules.togglePinned(item, "2", setOf("1", "2"))
+        assertEquals(setOf("2"), SportsRules.pinnedIds(item))
+        val ordered = SportsRules.gamesFor(listOf(League.NFL), emptyList(), boards, SportsRules.pinnedIds(item))
+        assertEquals(listOf("2", "1"), ordered.map { it.id })
+        assertEquals(listOf("2"), SportsRules.barGames(ordered, liveOnly = false, pinnedIds = SportsRules.pinnedIds(item)).map { it.id })
+
+        item = SportsRules.togglePinned(item, "1", setOf("1", "2"))
+        assertEquals(setOf("2", "1"), SportsRules.pinnedIds(item))
+        assertEquals(2, SportsRules.barGames(ordered, liveOnly = false, pinnedIds = SportsRules.pinnedIds(item)).size)
     }
 }

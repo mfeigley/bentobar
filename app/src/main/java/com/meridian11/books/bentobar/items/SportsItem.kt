@@ -129,9 +129,10 @@ object SportsItem : ItemType("sports", R.string.item_sports_title, Sym.STAR, R.s
         }
 
         val teams = SportsRules.teams(item)
-        val allGames = SportsRules.gamesFor(leagues, teams, bMap)
+        val pinned = SportsRules.pinnedIds(item)
+        val allGames = SportsRules.gamesFor(leagues, teams, bMap, pinned)
         val anyLive = allGames.any { it.state == GameState.LIVE }
-        val shownGames = SportsRules.barGames(allGames, SportsRules.liveOnly(item))
+        val shownGames = SportsRules.barGames(allGames, SportsRules.liveOnly(item), pinned)
 
         if (shownGames.isEmpty()) {
             val d = Env.str(if (SportsRules.liveOnly(item) && allGames.isNotEmpty()) R.string.sports_no_live_games else R.string.sports_no_games)
@@ -142,10 +143,13 @@ object SportsItem : ItemType("sports", R.string.item_sports_title, Sym.STAR, R.s
         val turnSec = SportsRules.turnSec(item)
         val idx = ((Now.wall() / 1000L) / turnSec).mod(turns.size)
         val current = shownGames[idx]
-        val icon = when (current.state) {
-            GameState.LIVE -> Sym.PLAY_CIRCLE
-            GameState.FINAL -> Sym.CHECK_CIRCLE
-            GameState.UPCOMING -> Sym.SCHEDULE
+        val isPinnedLive = current.state == GameState.LIVE && current.id in pinned
+        val icon = when {
+            isPinnedLive -> Sym.PUSH_PIN
+            current.state == GameState.LIVE -> Sym.PLAY_CIRCLE
+            current.state == GameState.FINAL -> Sym.CHECK_CIRCLE
+            current.state == GameState.UPCOMING -> Sym.SCHEDULE
+            else -> Sym.STAR
         }
         val summary = shownGames.take(5).joinToString("; ") { g -> SportsRules.spokenGame(g, formatStartTime(g.startEpochMs)) }
         val desc = Env.str(R.string.sports_desc_live, summary)
