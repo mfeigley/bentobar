@@ -152,14 +152,16 @@ internal fun SportsMenu(item: ItemConfig, host: MenuHost) {
                 }
                 val newest = boards.values.filter { it.fetchedAt > 0 }.maxByOrNull { it.fetchedAt }
                 if (newest != null) {
-                    val clock = WeatherItem.times().clock(newest.fetchedAt, ZoneId.systemDefault())
-                    val anyFailure = boards.values.mapNotNull { it.failure }.firstOrNull()
-                    val updated = when (anyFailure) {
-                        Failure.OFFLINE -> stringResource(R.string.common_updated_offline, clock)
-                        null -> stringResource(R.string.common_updated, clock)
-                        else -> stringResource(R.string.common_updated_no_answer, clock)
+                    val clock = runCatching { WeatherItem.times().clock(newest.fetchedAt, ZoneId.systemDefault()) }.getOrNull()
+                    if (clock != null) {
+                        val anyFailure = boards.values.mapNotNull { it.failure }.firstOrNull()
+                        val updated = when (anyFailure) {
+                            Failure.OFFLINE -> stringResource(R.string.common_updated_offline, clock)
+                            null -> stringResource(R.string.common_updated, clock)
+                            else -> stringResource(R.string.common_updated_no_answer, clock)
+                        }
+                        MenuNote(stringResource(R.string.sports_note, updated))
                     }
-                    MenuNote(stringResource(R.string.sports_note, updated))
                 }
                 MenuDivider()
                 if (anyPinnedLive) {

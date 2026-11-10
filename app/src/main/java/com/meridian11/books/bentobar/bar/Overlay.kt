@@ -98,8 +98,20 @@ class Overlay(
      */
     fun setContentVisible(visible: Boolean) { root?.visibility = if (visible) android.view.View.VISIBLE else android.view.View.INVISIBLE }
 
-    /** Applies changed [params] (position, size, flags). */
-    fun relayout() { root?.let { runCatching { wm.updateViewLayout(it, params) } } }
+    /** Applies changed [params] (position, size, flags); if WindowManager dropped the view, resets so the next pass adds it again. */
+    fun relayout() {
+        val r = root ?: return
+        try {
+            wm.updateViewLayout(r, params)
+        } catch (e: IllegalArgumentException) {
+            Log.w("BentoBar", "window ${params.title} detached, will re-add: ${e.javaClass.simpleName}")
+            root = null
+            compose = null
+            life.hidden()
+        } catch (e: RuntimeException) {
+            Log.w("BentoBar", "can't update window ${params.title}: ${e.javaClass.simpleName}")
+        }
+    }
 
     /** Hear about clicks outside this window ([onOutside]) only while it matters, e.g. while hidden items are out. */
     fun watchOutside(on: Boolean) {

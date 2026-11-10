@@ -354,4 +354,127 @@ class SportsRulesTest {
         )
         assertEquals(listOf("BOS", "DAL", "CIN"), multiFinal.map { it.awayAbbr })
     }
+
+    @Test fun sortsLargeMixedLiveAndHeldFinalScoreboardsWithoutComparatorViolation() {
+        val now = 2_000_000_000L
+        val base = SportsRules.sample("live", League.NCAAB, now)!!.games.first()
+        val games = (0 until 64).map { i ->
+            val state = when (i % 4) {
+                0 -> GameState.LIVE
+                1 -> GameState.FINAL // held in live rotation (within 5-minute window)
+                2 -> GameState.FINAL // older final (outside live rotation)
+                else -> GameState.UPCOMING
+            }
+            val finalSince = when (i % 4) {
+                1 -> now - (i * 3_000L) // within 5m hold
+                2 -> if (i % 8 == 2) now - 20 * 60_000L - i * 1_000L else null
+                else -> null
+            }
+            val start = if (i % 11 == 0) null else now - (64 - i) * 60_000L
+            base.copy(
+                id = "g$i",
+                state = state,
+                startEpochMs = start,
+                finalSinceMs = finalSince,
+            )
+        }
+        val pinned = setOf("g0", "g1", "g5", "g8")
+        val zone = java.time.ZoneId.of("America/Chicago")
+        val today = java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        val rng = java.util.Random(42L)
+        repeat(25) {
+            val shuffled = games.shuffled(rng)
+            val board = SportsRules.Scoreboard(League.NCAAB, shuffled, fetchedAt = now)
+            val sorted = SportsRules.gamesFor(
+                listOf(League.NCAAB),
+                emptyList(),
+                mapOf(League.NCAAB to board),
+                pinnedIds = pinned,
+                now = now,
+                zone = zone,
+            )
+            assertEquals(64, sorted.size)
+            val buckets = sorted.map { g -> SportsRules.sortBucket(g, pinned, now, today, zone) }
+            assertEquals(buckets.sorted(), buckets)
+        }
+    }
+
+    @Test fun showsUpcomingGamesLaterTodayBeforeYesterdayFinalGames() {
+        val zone = java.time.ZoneId.of("America/Chicago")
+        val now = java.time.ZonedDateTime.of(2026, 11, 9, 18, 30, 0, 0, zone).toInstant().toEpochMilli()
+        val template = SportsRules.sample("final", League.NFL, now)!!.games.first()
+
+        val sundayEarlyFinal = template.copy(
+            id = "sun1",
+            awayAbbr = "DAL",
+            homeAbbr = "IND",
+            state = GameState.FINAL,
+            startEpochMs = java.time.ZonedDateTime.of(2026, 11, 8, 12, 0, 0, 0, zone).toInstant().toEpochMilli(),
+            finalSinceMs = null,
+        )
+        val sundayNightFinal = template.copy(
+            id = "sun2",
+            awayAbbr = "SF",
+            homeAbbr = "SEA",
+            state = GameState.FINAL,
+            startEpochMs = java.time.ZonedDateTime.of(2026, 11, 8, 19, 20, 0, 0, zone).toInstant().toEpochMilli(),
+            // Even if finalSinceMs trickled just past midnight, its scheduled date was yesterday (Nov 8).
+            finalSinceMs = java.time.ZonedDateTime.of(2026, 11, 9, 0, 10, 0, 0, zone).toInstant().toEpochMilli(),
+        )
+        val mondayAfternoonFinal = template.copy(
+            id = "mon_fin",
+            league = League.UCL,
+            awayAbbr = "ARS",
+            homeAbbr = "BAY",
+            state = GameState.FINAL,
+            startEpochMs = java.time.ZonedDateTime.of(2026, 11, 9, 14, 0, 0, 0, zone).toInstant().toEpochMilli(),
+            finalSinceMs = null,
+        )
+        val mondayNightUpcoming1 = template.copy(
+            id = "mon_up1",
+            awayAbbr = "CIN",
+            homeAbbr = "BAL",
+            awayScore = null,
+            homeScore = null,
+            state = GameState.UPCOMING,
+            startEpochMs = java.time.ZonedDateTime.of(2026, 11, 9, 19, 15, 0, 0, zone).toInstant().toEpochMilli(),
+        )
+        val mondayNightUpcoming2 = template.copy(
+            id = "mon_up2",
+            league = League.NBA,
+            awayAbbr = "LAL",
+            homeAbbr = "DEN",
+            awayScore = null,
+            homeScore = null,
+            state = GameState.UPCOMING,
+            startEpochMs = java.time.ZonedDateTime.of(2026, 11, 9, 21, 0, 0, 0, zone).toInstant().toEpochMilli(),
+        )
+        val tuesdayUpcoming = template.copy(
+            id = "tue_up",
+            league = League.NBA,
+            awayAbbr = "BOS",
+            homeAbbr = "NYK",
+            awayScore = null,
+            homeScore = null,
+            state = GameState.UPCOMING,
+            startEpochMs = java.time.ZonedDateTime.of(2026, 11, 10, 18, 30, 0, 0, zone).toInstant().toEpochMilli(),
+        )
+
+        val boards = mapOf(
+            League.NFL to SportsRules.Scoreboard(League.NFL, listOf(sundayEarlyFinal, sundayNightFinal, mondayNightUpcoming1), fetchedAt = now),
+            League.NBA to SportsRules.Scoreboard(League.NBA, listOf(mondayNightUpcoming2, tuesdayUpcoming), fetchedAt = now),
+            League.UCL to SportsRules.Scoreboard(League.UCL, listOf(mondayAfternoonFinal), fetchedAt = now),
+        )
+        val ordered = SportsRules.gamesFor(
+            listOf(League.NFL, League.NBA, League.UCL),
+            emptyList(),
+            boards,
+            now = now,
+            zone = zone,
+        )
+        assertEquals(
+            listOf("mon_fin", "mon_up1", "mon_up2", "sun2", "sun1", "tue_up"),
+            ordered.map { it.id },
+        )
+    }
 }

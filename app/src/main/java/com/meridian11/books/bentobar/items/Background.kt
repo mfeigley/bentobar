@@ -23,8 +23,18 @@ object Background {
     /** The one thread named "BentoBar-[name]", lowest priority, started with the first task and gone after half a minute without one. */
     fun executor(name: String): Executor = synchronized(threads) {
         threads.getOrPut(name) {
-            ThreadPoolExecutor(0, 1, 30, TimeUnit.SECONDS, LinkedBlockingQueue()) { r ->
+            val pool = ThreadPoolExecutor(0, 1, 30, TimeUnit.SECONDS, LinkedBlockingQueue()) { r ->
                 Thread(r, "BentoBar-$name").apply { isDaemon = true; priority = Thread.MIN_PRIORITY }
+            }
+            Executor { task ->
+                pool.execute {
+                    try {
+                        task.run()
+                    } catch (t: Throwable) {
+                        if (t is VirtualMachineError) throw t
+                        android.util.Log.w("BentoBar", "background task in $name failed: ${t.javaClass.simpleName}")
+                    }
+                }
             }
         }
     }

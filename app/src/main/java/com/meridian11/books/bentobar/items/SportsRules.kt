@@ -10,7 +10,10 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.time.Instant
+import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.util.Locale
 import kotlin.math.abs
 
@@ -105,7 +108,7 @@ object SportsRules {
 
         /** True while [state] is [GameState.LIVE], or for [FINAL_HOLD_MS] (5 minutes) after initially going final. */
         fun inLiveRotation(now: Long): Boolean =
-            state == GameState.LIVE || (state == GameState.FINAL && finalSinceMs != null && now - finalSinceMs in 0..FINAL_HOLD_MS)
+            state == GameState.LIVE || (state == GameState.FINAL && finalSinceMs != null && now >= finalSinceMs - 60_000L && now - finalSinceMs <= FINAL_HOLD_MS)
 
         fun matchesTeam(query: String): Boolean {
             val q = query.trim().uppercase(Locale.ROOT)
@@ -442,13 +445,31 @@ object SportsRules {
      */
     internal fun finalOrderKey(g: Game): Long = g.finalSinceMs ?: g.startEpochMs ?: Long.MIN_VALUE
 
+    private fun gameLocalDate(epochMs: Long?, zone: ZoneId): LocalDate? =
+        epochMs?.let { runCatching { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }.getOrNull() }
+
+    internal fun sortBucket(g: Game, pinnedIds: Set<String>, now: Long, today: LocalDate?, zone: ZoneId): Int = when {
+        g.inLiveRotation(now) && g.id in pinnedIds -> 0
+        g.inLiveRotation(now) -> 1
+        g.state == GameState.FINAL -> {
+            val gameDate = gameLocalDate(g.startEpochMs ?: g.finalSinceMs, zone)
+            if (today == null || gameDate == today) 2 else 4
+        }
+        else -> {
+            val gameDate = gameLocalDate(g.startEpochMs, zone)
+            if (today != null && gameDate == today) 3 else 5
+        }
+    }
+
     /**
      * All games across [leagues] matching [teams] (or all games when [teams] is empty), ordered with:
      * 1. Pinned games in the live rotation ([Game.inLiveRotation]),
      * 2. Unpinned games in the live rotation ([Game.inLiveRotation]),
-     * 3. [GameState.FINAL] games ordered by most recently ended first (falling back to [Game.startEpochMs]
-     *    in reverse chronological order when the end time is unknown),
-     * 4. [GameState.UPCOMING] games in chronological order.
+     * 3. Today's [GameState.FINAL] games ordered by most recently ended first,
+     * 4. Today's [GameState.UPCOMING] games in chronological order (before completed games from previous days),
+     * 5. Earlier days' [GameState.FINAL] games ordered by most recently ended first (falling back to
+     *    [Game.startEpochMs] in reverse chronological order when the end time is unknown),
+     * 6. Future days' [GameState.UPCOMING] games in chronological order.
      */
     fun gamesFor(
         leagues: List<League>,
@@ -456,25 +477,20 @@ object SportsRules {
         boards: Map<League, Scoreboard>,
         pinnedIds: Set<String> = emptySet(),
         now: Long = 0L,
+        zone: ZoneId = ZoneId.systemDefault(),
     ): List<Game> {
         val raw = leagues.flatMap { boards[it]?.games.orEmpty() }
         val filtered = if (teams.isEmpty()) raw else raw.filter { g -> teams.any { g.matchesTeam(it) } }
-        return filtered.sortedWith(
-            compareBy<Game> { g ->
-                when {
-                    g.inLiveRotation(now) && g.id in pinnedIds -> 0
-                    g.inLiveRotation(now) -> 1
-                    g.state == GameState.FINAL -> 2
-                    else -> 3
-                }
-            }.thenComparator { a, b ->
-                if (a.state == GameState.FINAL && b.state == GameState.FINAL) {
-                    finalOrderKey(b).compareTo(finalOrderKey(a))
-                } else {
-                    (a.startEpochMs ?: Long.MAX_VALUE).compareTo(b.startEpochMs ?: Long.MAX_VALUE)
-                }
-            },
-        )
+        val today = if (now > 0L) gameLocalDate(now, zone) else null
+        fun bucket(g: Game): Int = sortBucket(g, pinnedIds, now, today, zone)
+        fun isFinalBucket(b: Int): Boolean = b == 2 || b == 4
+        // Pure single-element projection keys guarantee strict weak ordering (TimSort transitivity),
+        // including when buckets 0 or 1 mix LIVE games with FINAL games still inside the 5-minute hold.
+        val comparator = compareBy<Game> { g -> bucket(g) }
+            .thenByDescending { g -> if (isFinalBucket(bucket(g))) finalOrderKey(g) else 0L }
+            .thenBy { g -> if (isFinalBucket(bucket(g))) 0L else (g.startEpochMs ?: Long.MAX_VALUE) }
+            .thenBy { g -> g.id }
+        return filtered.sortedWith(comparator)
     }
 
     /**

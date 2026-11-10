@@ -76,13 +76,19 @@ class BarService : AccessibilityService() {
     }
 
     override fun onServiceConnected() {
-        connected = true
-        bar?.stop() // connected again without an unbind: the old strip's windows mustn't stay up
-        bar = null
-        if (!startWhenUnlocked()) {
-            watchUnlock()
+        try {
+            connected = true
+            bar?.stop() // connected again without an unbind: the old strip's windows mustn't stay up
+            bar = null
+            if (!startWhenUnlocked()) {
+                watchUnlock()
+                scheduleUnlockChecks()
+                Log.i(TAG, "service connected before unlock; waiting for user storage")
+            }
+        } catch (t: Throwable) {
+            if (t is VirtualMachineError) throw t
+            Log.e(TAG, "onServiceConnected failed: ${t.javaClass.simpleName}", t)
             scheduleUnlockChecks()
-            Log.i(TAG, "service connected before unlock; waiting for user storage")
         }
     }
 
@@ -103,6 +109,7 @@ class BarService : AccessibilityService() {
             next.start()
             bar = next
         } catch (t: Throwable) {
+            if (t is VirtualMachineError) throw t
             Log.w(TAG, "bar start deferred: ${t.javaClass.simpleName}", t)
             runCatching { next.stop() }
             if (Env.service === this) Env.service = null
@@ -117,12 +124,14 @@ class BarService : AccessibilityService() {
 
     private fun watchUnlock() {
         if (waitingUnlock) return
-        waitingUnlock = true
-        registerReceiver(unlockReceiver, IntentFilter().apply {
+        val filter = IntentFilter().apply {
             addAction(Intent.ACTION_USER_UNLOCKED)
             addAction(Intent.ACTION_USER_PRESENT)
             addAction(Intent.ACTION_SCREEN_ON)
-        })
+        }
+        waitingUnlock = runCatching {
+            registerReceiver(unlockReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        }.onFailure { Log.w(TAG, "unlock receiver registration failed: ${it.javaClass.simpleName}") }.isSuccess
     }
 
     private fun unwatchUnlock() {
@@ -139,16 +148,21 @@ class BarService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        val b = bar
-        if (b != null) b.onEvent(event)
-        else if (connected && Env.isUnlocked(this)) main.postDelayed(unlockCheck, 250)
+        try {
+            val b = bar
+            if (b != null) b.onEvent(event)
+            else if (connected && Env.isUnlocked(this)) main.postDelayed(unlockCheck, 250)
+        } catch (t: Throwable) {
+            if (t is VirtualMachineError) throw t
+            Log.w(TAG, "accessibility event failed: ${t.javaClass.simpleName}")
+        }
     }
 
     override fun onInterrupt() {}
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        bar?.onConfigChanged()
+        runCatching { bar?.onConfigChanged() }
     }
 
     override fun onUnbind(intent: Intent?): Boolean { shutdown(); return super.onUnbind(intent) }
@@ -159,16 +173,21 @@ class BarService : AccessibilityService() {
      * (UiAutomation, e.g. `uiautomator dump`, unbinds every accessibility service while it runs.)
      */
     private fun shutdown() {
-        connected = false
-        unwatchUnlock()
-        main.removeCallbacksAndMessages(null)
-        val stopping = bar
-        bar = null // first: whatever stop() does, it runs once per controller
-        stopping?.stop()
-        if (Env.service === this) Env.service = null
-        if (Env.ready) {
-            runCatching { Chips.update(this) }
-            runCatching { com.meridian11.books.bentobar.ui.Setup.refresh(this) }
+        try {
+            connected = false
+            unwatchUnlock()
+            main.removeCallbacksAndMessages(null)
+            val stopping = bar
+            bar = null // first: whatever stop() does, it runs once per controller
+            stopping?.stop()
+            if (Env.service === this) Env.service = null
+            if (Env.ready) {
+                runCatching { Chips.update(this) }
+                runCatching { com.meridian11.books.bentobar.ui.Setup.refresh(this) }
+            }
+        } catch (t: Throwable) {
+            if (t is VirtualMachineError) throw t
+            Log.w(TAG, "shutdown failed: ${t.javaClass.simpleName}")
         }
     }
 
@@ -330,7 +349,7 @@ class BarController(private val service: AccessibilityService) {
         Store.config.value.let { if (it.pinnedOpen && it.hiddenMode != HiddenMode.SHOW_ALL) { expanded.value = true; pinned = true } }
         service.registerReceiver(screen, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT)
-        })
+        }, Context.RECEIVER_NOT_EXPORTED)
         runCatching { WallpaperManager.getInstance(service).addOnColorsChangedListener(wallpaper, main) }
         scope.launch { Store.config.collect { onConfig() } }
         scope.launch {

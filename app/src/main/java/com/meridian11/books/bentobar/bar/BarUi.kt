@@ -635,8 +635,8 @@ private fun ItemView(entry: StripEntry, look: StripLook, events: StripEvents, gl
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        val templates = if (showText) (s.turns ?: if (s.widthKey != null) listOf(Fmt.widthTemplate(s.text!!)) else null) else null
-        val slot = templates?.let { tpls -> remember(tpls, textStyle) { tpls.maxOf { measurer.measure(it, textStyle, maxLines = 1).size.width } } }
+        val templates = if (showText) (s.turns?.takeIf { it.isNotEmpty() } ?: if (s.widthKey != null) listOf(Fmt.widthTemplate(s.text!!)) else null) else null
+        val slot = templates?.let { tpls -> remember(tpls, textStyle) { tpls.maxOfOrNull { measurer.measure(it, textStyle, maxLines = 1).size.width } ?: 0 } }
         val leadPx = if (showText && s.textEnd && slot != null) {
             val w = remember(s.text, textStyle) { measurer.measure(s.text!!, textStyle, maxLines = 1).size.width }
             (slot - w).coerceAtLeast(0)
