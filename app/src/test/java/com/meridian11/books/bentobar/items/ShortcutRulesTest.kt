@@ -82,4 +82,15 @@ class ShortcutRulesTest {
         assertEquals(Sym.DESKTOP_WINDOWS, DesktopItem.icon)
         assertNull(DesktopItem.menu)
     }
+
+    @Test fun showDesktopHidesWhenWindowsAreOpenAndRestoresOnSecondClick() {
+        // First click with open windows hides them to show the desktop.
+        assertTrue(ShortcutRules.shouldHideDesktop(visible = listOf("a", "b"), saved = emptyList(), sinceHideMs = 10_000L))
+        // Second click on the empty desktop restores the saved windows.
+        assertFalse(ShortcutRules.shouldHideDesktop(visible = emptyList(), saved = listOf("a", "b"), sinceHideMs = 2_000L))
+        // Second click while the hide animation is still finishing also restores.
+        assertFalse(ShortcutRules.shouldHideDesktop(visible = listOf("a", "b"), saved = listOf("a", "b"), sinceHideMs = 300L))
+        // If a new window was opened later on the desktop, clicking again hides it instead of restoring old ones.
+        assertTrue(ShortcutRules.shouldHideDesktop(visible = listOf("c"), saved = listOf("a", "b"), sinceHideMs = 3_000L))
+    }
 }

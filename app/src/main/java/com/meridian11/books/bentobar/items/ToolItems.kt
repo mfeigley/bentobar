@@ -212,10 +212,85 @@ object ToolsItem : ItemType("tools", R.string.item_tools_title, Sym.HANDYMAN, R.
 
 object DesktopItem : ItemType("desktop", R.string.item_desktop_title, Sym.DESKTOP_WINDOWS, R.string.item_desktop_desc) {
     override val refreshMs = 60_000L
+    private val main by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private var savedApps: List<ComponentName> = emptyList()
+    private var lastHideAt = 0L
 
-    fun showDesktop(): Boolean =
+    private fun goHome(): Boolean =
         Env.global(AccessibilityService.GLOBAL_ACTION_HOME) ||
             Env.launch(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), quiet = true)
+
+    private fun visibleApps(svc: AccessibilityService): List<ComponentName> {
+        val windows = runCatching { svc.windows }.getOrDefault(emptyList())
+            .filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+        if (windows.isEmpty()) return emptyList()
+        val launchable = Apps.list(Env.app)
+        val byPkg = LinkedHashMap<String, ComponentName>()
+        val byLabel = LinkedHashMap<String, ComponentName>()
+        for (a in launchable) {
+            byPkg.putIfAbsent(a.component.packageName, a.component)
+            byLabel.putIfAbsent(a.label.trim().lowercase(Locale.ROOT), a.component)
+        }
+        byPkg[Env.app.packageName] = ComponentName(Env.app, com.meridian11.books.bentobar.ui.MainActivity::class.java)
+        val pm = Env.app.packageManager
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val excludedPkgs = buildSet {
+            add("com.android.systemui")
+            runCatching { pm.resolveActivity(homeIntent, 0)?.activityInfo?.packageName }.getOrNull()?.let { add(it) }
+            runCatching { pm.queryIntentActivities(homeIntent, 0) }.getOrDefault(emptyList()).forEach { add(it.activityInfo.packageName) }
+        }
+        val result = ArrayList<ComponentName>()
+        val rect = android.graphics.Rect()
+        for ((index, w) in windows.withIndex()) {
+            w.getBoundsInScreen(rect)
+            // The home screen sits full-screen at (0, 0) behind floating desktop windows.
+            if (index > 0 && rect.left == 0 && rect.top == 0) continue
+            val pkg = runCatching { w.root?.packageName?.toString() }.getOrNull()
+            val cn = if (pkg != null) {
+                if (pkg in excludedPkgs || pkg.contains("launcher", ignoreCase = true)) null
+                else byPkg[pkg] ?: runCatching { pm.getLaunchIntentForPackage(pkg)?.component }.getOrNull()
+            } else if (rect.top > 0) {
+                val title = w.title?.toString()?.trim()?.lowercase(Locale.ROOT)
+                if (title != null) byLabel[title] else null
+            } else null
+            if (cn != null && cn !in result) result.add(cn)
+        }
+        return result
+    }
+
+    fun showDesktop(): Boolean {
+        val svc = Env.service ?: return goHome()
+        main.removeCallbacksAndMessages(null)
+        val now = android.os.SystemClock.uptimeMillis()
+        val visible = visibleApps(svc)
+        if (ShortcutRules.shouldHideDesktop(visible, savedApps, now - lastHideAt)) {
+            if (visible.isNotEmpty()) {
+                savedApps = visible
+                lastHideAt = now
+            }
+            return goHome()
+        }
+        val restore = savedApps
+        savedApps = emptyList()
+        lastHideAt = 0L
+        val top = restore.first()
+        Apps.launch(top)
+        if (restore.size > 1) {
+            // Launching one freeform window in an inactive desk reactivates the whole desk in its saved
+            // z-order; if any window was minimized outside the desk, bring the remaining ones back too.
+            main.postDelayed({
+                val current = Env.service?.let { visibleApps(it) }.orEmpty().toSet()
+                val missing = restore.drop(1).filter { it !in current }.reversed()
+                if (missing.isNotEmpty()) {
+                    missing.forEachIndexed { i, cn ->
+                        main.postDelayed({ Apps.launch(cn) }, i * 60L)
+                    }
+                    main.postDelayed({ Apps.launch(top) }, missing.size * 60L)
+                }
+            }, 350L)
+        }
+        return true
+    }
 
     override fun state(item: ItemConfig): ItemState {
         val name = Env.str(R.string.item_desktop_title)

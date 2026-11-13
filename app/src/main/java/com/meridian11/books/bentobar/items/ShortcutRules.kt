@@ -45,4 +45,11 @@ object ShortcutRules {
      * tooltip, the menu the click came from) are gone, as long as the Tools menu waits for its menu.
      */
     fun waitMs(action: ShortcutAction): Long = if (action == ShortcutAction.SCREENSHOT) 250L else 0L
+
+    /**
+     * Whether clicking Show desktop should hide the currently [visible] app windows (saving them to
+     * reopen next time) or reopen the [saved] ones from the previous click.
+     */
+    fun <T> shouldHideDesktop(visible: List<T>, saved: List<T>, sinceHideMs: Long): Boolean =
+        visible.isNotEmpty() && (saved.isEmpty() || sinceHideMs > 600L) || saved.isEmpty()
 }
