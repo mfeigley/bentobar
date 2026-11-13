@@ -14,7 +14,7 @@ class ShortcutRulesTest {
 
     @Test fun eachActionKeepsTheIdALayoutStoresForIt() {
         // A layout keeps the id, and a copied or backed-up layout comes back with it: an id never changes.
-        assertEquals(listOf("screenshot", "bug", "lock", "overview", "apps", "notifications", "quick_settings"),
+        assertEquals(listOf("screenshot", "desktop", "bug", "lock", "overview", "apps", "notifications", "quick_settings"),
             ShortcutAction.entries.map { it.id })
     }
 
@@ -23,12 +23,14 @@ class ShortcutRulesTest {
         assertEquals(ShortcutAction.SCREENSHOT, ShortcutRules.action(null))
         assertEquals(ShortcutAction.SCREENSHOT, ShortcutRules.action(""))
         assertEquals(ShortcutAction.SCREENSHOT, ShortcutRules.action("record"))
+        assertEquals(ShortcutAction.DESKTOP, ShortcutRules.action("desktop"))
         assertEquals(ShortcutAction.REPORT_BUG, ShortcutRules.action("bug"))
         assertEquals(ShortcutAction.QUICK_SETTINGS, ShortcutRules.action("quick_settings"))
     }
 
     @Test fun theSystemActionsAreTheToolsMenusOwn() {
         assertEquals(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT, ShortcutAction.SCREENSHOT.global)
+        assertEquals(AccessibilityService.GLOBAL_ACTION_HOME, ShortcutAction.DESKTOP.global)
         assertEquals(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN, ShortcutAction.LOCK.global)
         assertEquals(AccessibilityService.GLOBAL_ACTION_RECENTS, ShortcutAction.OVERVIEW.global)
         assertEquals(AccessibilityService.GLOBAL_ACTION_ACCESSIBILITY_ALL_APPS, ShortcutAction.ALL_APPS.global)
@@ -38,7 +40,9 @@ class ShortcutRulesTest {
         assertNull(ShortcutAction.REPORT_BUG.global)
         // The same words and glyphs as the Tools menu, so the two say the same thing.
         assertEquals(R.string.tools_screenshot, ShortcutAction.SCREENSHOT.label)
+        assertEquals(R.string.tools_desktop, ShortcutAction.DESKTOP.label)
         assertEquals(Sym.SCREENSHOT_MONITOR, ShortcutAction.SCREENSHOT.glyph)
+        assertEquals(Sym.DESKTOP_WINDOWS, ShortcutAction.DESKTOP.glyph)
         assertEquals(Sym.BUG_REPORT, ShortcutAction.REPORT_BUG.glyph)
     }
 
@@ -69,5 +73,13 @@ class ShortcutRulesTest {
         // A tooltip or the menu the click came from must not be in the picture: as long as the Tools menu waits.
         assertEquals(250L, ShortcutRules.waitMs(ShortcutAction.SCREENSHOT))
         assertTrue(ShortcutAction.entries.filter { it != ShortcutAction.SCREENSHOT }.all { ShortcutRules.waitMs(it) == 0L })
+    }
+
+    @Test fun desktopItemHasExpectedMetadataAndNoMenu() {
+        assertEquals("desktop", DesktopItem.type)
+        assertEquals(R.string.item_desktop_title, DesktopItem.titleRes)
+        assertEquals(R.string.item_desktop_desc, DesktopItem.blurbRes)
+        assertEquals(Sym.DESKTOP_WINDOWS, DesktopItem.icon)
+        assertNull(DesktopItem.menu)
     }
 }

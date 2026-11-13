@@ -47,6 +47,7 @@ object ShortcutItem : ItemType("shortcut", R.string.item_shortcut_title, Sym.SCR
 
     override fun onClick(item: ItemConfig): Boolean {
         val action = action(item)
+        if (action == ShortcutAction.DESKTOP) return DesktopItem.showDesktop()
         val global = action.global ?: return ShortcutRules.usable(action, feedback()) && Env.launch(bugReport(), quiet = true)
         val wait = ShortcutRules.waitMs(action)
         if (wait == 0L) return Env.global(global)

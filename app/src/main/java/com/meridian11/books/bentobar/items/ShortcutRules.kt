@@ -13,6 +13,7 @@ import com.meridian11.books.bentobar.util.Sym
  */
 enum class ShortcutAction(val id: String, val glyph: String, @StringRes val label: Int, val global: Int?) {
     SCREENSHOT("screenshot", Sym.SCREENSHOT_MONITOR, R.string.tools_screenshot, AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT),
+    DESKTOP("desktop", Sym.DESKTOP_WINDOWS, R.string.tools_desktop, AccessibilityService.GLOBAL_ACTION_HOME),
     REPORT_BUG("bug", Sym.BUG_REPORT, R.string.shortcut_report_bug, null),
     LOCK("lock", Sym.LOCK, R.string.tools_lock, AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN),
     OVERVIEW("overview", Sym.DESKTOP_WINDOWS, R.string.tools_overview, AccessibilityService.GLOBAL_ACTION_RECENTS),

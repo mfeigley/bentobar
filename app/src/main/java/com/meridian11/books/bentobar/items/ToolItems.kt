@@ -164,6 +164,7 @@ object ToolsItem : ItemType("tools", R.string.item_tools_title, Sym.HANDYMAN, R.
 
     private val system = listOf(
         Tool(Sym.SCREENSHOT_MONITOR, R.string.tools_screenshot, global(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)),
+        Tool(Sym.DESKTOP_WINDOWS, R.string.tools_desktop, { DesktopItem.showDesktop() }),
         Tool(Sym.LOCK, R.string.tools_lock, global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)),
         Tool(Sym.DESKTOP_WINDOWS, R.string.tools_overview, global(AccessibilityService.GLOBAL_ACTION_RECENTS)),
         Tool(Sym.APPS, R.string.tools_all_apps, global(AccessibilityService.GLOBAL_ACTION_ACCESSIBILITY_ALL_APPS)),
@@ -207,6 +208,21 @@ object ToolsItem : ItemType("tools", R.string.item_tools_title, Sym.HANDYMAN, R.
         }
         SwitchRow(stringResource(R.string.tools_settings_shortcuts), item.optBool("settings", true)) { set(item.with("settings", it.toString())) }
     }
+}
+
+object DesktopItem : ItemType("desktop", R.string.item_desktop_title, Sym.DESKTOP_WINDOWS, R.string.item_desktop_desc) {
+    override val refreshMs = 60_000L
+
+    fun showDesktop(): Boolean =
+        Env.global(AccessibilityService.GLOBAL_ACTION_HOME) ||
+            Env.launch(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), quiet = true)
+
+    override fun state(item: ItemConfig): ItemState {
+        val name = Env.str(R.string.item_desktop_title)
+        return ItemState(icon = Sym.DESKTOP_WINDOWS, text = name, desc = name, tooltip = name)
+    }
+
+    override fun onClick(item: ItemConfig): Boolean = showDesktop()
 }
 
 /** Launchable apps, for the app items. */

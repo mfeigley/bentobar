@@ -2,7 +2,7 @@
 <!-- Shortcut: one click, one action. Every name here starts with shortcut_ or item_shortcut_. The actions' own names are the Tools menu's (tools_…). -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
     <string name="item_shortcut_title">Shortcut</string>
-    <string name="item_shortcut_desc">One click: a screenshot, a bug report, lock, overview and more</string>
+    <string name="item_shortcut_desc">One click: a screenshot, show desktop, a bug report, lock, overview and more</string>
     <!-- Opens the Googlebook's Feedback app. -->
     <string name="shortcut_report_bug">Report a bug</string>
     <!-- The item's settings: which action a click does. -->
