@@ -3,6 +3,7 @@ package com.meridian11.books.bentobar.items
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -123,6 +124,13 @@ internal fun SportsMenu(item: ItemConfig, host: MenuHost) {
         else -> {
             val now = Now.wall()
             val games = SportsRules.gamesFor(leagues, teams, boards, pinnedIds, now)
+            val currentBarGame = SportsRules.currentBarGame(
+                games = games,
+                liveOnly = SportsRules.liveOnly(item),
+                pinnedIds = pinnedIds,
+                turnSec = SportsRules.turnSec(item),
+                now = now,
+            )
             val liveGameIds = remember(games, now) { games.filter { it.inLiveRotation(now) }.mapTo(HashSet()) { it.id } }
             val anyPinnedLive = games.any { it.inLiveRotation(now) && it.id in pinnedIds }
             val showLeagueBadge = leagues.size > 1
@@ -133,10 +141,12 @@ internal fun SportsMenu(item: ItemConfig, host: MenuHost) {
                     games.take(12).forEach { g ->
                         val inRotation = g.inLiveRotation(now)
                         val isPinned = inRotation && g.id in pinnedIds
+                        val isShownInBar = currentBarGame?.id == g.id && currentBarGame.league == g.league
                         GameRow(
                             g = g,
                             showLeague = showLeagueBadge,
                             isPinned = isPinned,
+                            isShownInBar = isShownInBar,
                             onTogglePin = if (inRotation) {
                                 {
                                     Store.updateItem(item.id) { SportsRules.togglePinned(it, g.id, liveGameIds) }
@@ -188,6 +198,7 @@ private fun GameRow(
     g: Game,
     showLeague: Boolean,
     isPinned: Boolean,
+    isShownInBar: Boolean,
     onTogglePin: (() -> Unit)?,
     onClick: () -> Unit,
 ) {
@@ -201,12 +212,14 @@ private fun GameRow(
     val source = remember { MutableInteractionSource() }
     val hovered by source.collectIsHoveredAsState()
     val focused by source.collectIsFocusedAsState()
+    val rowShape = RoundedCornerShape(14.dp)
 
     Column(
         Modifier.fillMaxWidth()
             .padding(vertical = 2.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(rowShape)
             .background(if (hovered || focused) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerHigh)
+            .then(if (isShownInBar) Modifier.border(1.5.dp, MaterialTheme.colorScheme.primary, rowShape) else Modifier)
             .hoverable(source)
             .clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand)

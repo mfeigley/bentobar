@@ -559,6 +559,24 @@ object SportsRules {
         }
     }
 
+    /**
+     * The game currently shown in the status bar at [now] (epoch ms) for [turnSec], or null when
+     * no game is shown in the bar.
+     */
+    fun currentBarGame(
+        games: List<Game>,
+        liveOnly: Boolean,
+        pinnedIds: Set<String> = emptySet(),
+        turnSec: Int = TURN_SEC,
+        now: Long = 0L,
+    ): Game? {
+        val shown = barGames(games, liveOnly, pinnedIds, now)
+        if (shown.isEmpty()) return null
+        val step = turnSec.coerceAtLeast(1)
+        val idx = ((now / 1000L) / step).mod(shown.size)
+        return shown[idx]
+    }
+
     /** Formats one game for the status bar within [BAR_CHARS] characters. */
     fun barText(g: Game, startTimeText: String? = null): String {
         fun fits(s: String) = TextRules.fits(s, BAR_CHARS)

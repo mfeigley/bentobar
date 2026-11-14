@@ -491,4 +491,16 @@ class SportsRulesTest {
             ordered.map { it.id },
         )
     }
+
+    @Test fun currentBarGameTracksRotatingAndPinnedGameInStatusBar() {
+        val now = 1_000_000L
+        val live = SportsRules.sample("live", League.NFL, now)!!
+        val games = SportsRules.gamesFor(listOf(League.NFL), emptyList(), mapOf(League.NFL to live), now = now)
+        assertEquals("1", SportsRules.currentBarGame(games, liveOnly = false, turnSec = 5, now = 0L)?.id)
+        assertEquals("2", SportsRules.currentBarGame(games, liveOnly = false, turnSec = 5, now = 5_000L)?.id)
+        assertEquals("1", SportsRules.currentBarGame(games, liveOnly = false, turnSec = 5, now = 10_000L)?.id)
+        // Pinned game stays selected at every rotation step.
+        assertEquals("2", SportsRules.currentBarGame(games, liveOnly = false, pinnedIds = setOf("2"), turnSec = 5, now = 0L)?.id)
+        assertEquals("2", SportsRules.currentBarGame(games, liveOnly = false, pinnedIds = setOf("2"), turnSec = 5, now = 5_000L)?.id)
+    }
 }

@@ -132,19 +132,19 @@ object SportsItem : ItemType("sports", R.string.item_sports_title, Sym.STAR, R.s
         val now = Now.wall()
         val teams = SportsRules.teams(item)
         val pinned = SportsRules.pinnedIds(item)
+        val liveOnly = SportsRules.liveOnly(item)
         val allGames = SportsRules.gamesFor(leagues, teams, bMap, pinned, now)
         val anyLive = allGames.any { it.inLiveRotation(now) }
-        val shownGames = SportsRules.barGames(allGames, SportsRules.liveOnly(item), pinned, now)
+        val shownGames = SportsRules.barGames(allGames, liveOnly, pinned, now)
+        val current = SportsRules.currentBarGame(allGames, liveOnly, pinned, SportsRules.turnSec(item), now)
 
-        if (shownGames.isEmpty()) {
-            val d = Env.str(if (SportsRules.liveOnly(item) && allGames.isNotEmpty()) R.string.sports_no_live_games else R.string.sports_no_games)
+        if (shownGames.isEmpty() || current == null) {
+            val d = Env.str(if (liveOnly && allGames.isNotEmpty()) R.string.sports_no_live_games else R.string.sports_no_games)
             return ItemState(icon = Sym.STAR, filled = false, text = null, active = false, desc = d, tooltip = d)
         }
 
         val turns = shownGames.map { g -> SportsRules.barText(g, formatStartTime(g.startEpochMs)) }
-        val turnSec = SportsRules.turnSec(item)
-        val idx = ((now / 1000L) / turnSec).mod(turns.size)
-        val current = shownGames[idx]
+        val currentText = SportsRules.barText(current, formatStartTime(current.startEpochMs))
         val isPinnedLive = current.inLiveRotation(now) && current.id in pinned
         val icon = when {
             isPinnedLive -> Sym.PUSH_PIN
@@ -159,7 +159,7 @@ object SportsItem : ItemType("sports", R.string.item_sports_title, Sym.STAR, R.s
         return ItemState(
             icon = icon,
             filled = true,
-            text = turns[idx],
+            text = currentText,
             turns = if (turns.size > 1) turns else null,
             textEnd = true,
             tone = if (anyLive) Tone.ACCENT else Tone.NORMAL,
