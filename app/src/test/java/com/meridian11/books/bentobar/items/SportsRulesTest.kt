@@ -33,6 +33,9 @@ class SportsRulesTest {
                     "possession": "3",
                     "shortDownDistanceText": "2nd & 6 at TB 38"
                   },
+                  "broadcasts": [
+                    { "market": "national", "names": ["FOX"] }
+                  ],
                   "competitors": [
                     {
                       "id": "3",
@@ -119,6 +122,10 @@ class SportsRulesTest {
                       "shortDetail": "11/8 - 8:20 PM EST"
                     }
                   },
+                  "broadcasts": [
+                    { "market": "home", "names": ["KING 5"] },
+                    { "market": "national", "names": ["NBC", "Peacock"] }
+                  ],
                   "competitors": [
                     {
                       "id": "26",
@@ -169,6 +176,9 @@ class SportsRulesTest {
         assertEquals("Q4 4:12", live.shortStatus)
         assertEquals("CHI", live.possessionAbbr)
         assertEquals("2nd & 6 at TB 38", live.situationText)
+        assertEquals("FOX", live.broadcast)
+        assertEquals("4:12 - 4th · FOX", SportsRules.menuHeader(live, showLeague = false))
+        assertEquals("NFL · 4:12 - 4th · FOX", SportsRules.menuHeader(live, showLeague = true))
 
         val fin = board.games[1]
         assertEquals(GameState.FINAL, fin.state)
@@ -177,6 +187,8 @@ class SportsRulesTest {
         assertEquals("IND", fin.homeAbbr)
         assertEquals(23, fin.homeScore)
         assertEquals("F", fin.shortStatus)
+        assertNull(fin.broadcast)
+        assertEquals("Final", SportsRules.menuHeader(fin, showLeague = false))
 
         val up = board.games[2]
         assertEquals(GameState.UPCOMING, up.state)
@@ -185,6 +197,8 @@ class SportsRulesTest {
         assertEquals("SEA", up.homeAbbr)
         assertNull(up.homeScore)
         assertNotNull(up.startEpochMs)
+        assertEquals("NBC, Peacock, KING 5", up.broadcast)
+        assertEquals("7:20 PM · NBC, Peacock, KING 5", SportsRules.menuHeader(up, showLeague = false, startTimeText = "7:20 PM"))
         assertEquals("https://www.espn.com/nfl/game/_/gameId/401671703", SportsRules.gamePage(up))
     }
 

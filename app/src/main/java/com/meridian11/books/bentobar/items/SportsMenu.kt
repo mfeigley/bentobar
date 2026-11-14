@@ -216,7 +216,7 @@ private fun GameRow(
             },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val header = if (showLeague) "${g.league.code} · ${startTime ?: g.statusDetail}" else (startTime ?: g.statusDetail)
+            val header = SportsRules.menuHeader(g, showLeague, startTime)
             Text(
                 header,
                 style = MaterialTheme.typography.labelSmall,

@@ -70,7 +70,8 @@ object SportsItem : ItemType("sports", R.string.item_sports_title, Sym.STAR, R.s
             } else if (b.failure == null) {
                 val relevant = if (teams.isEmpty()) b.games else b.games.filter { g -> teams.any { g.matchesTeam(it) } }
                 val activeOrSoon = relevant.any { it.state == GameState.LIVE } || SportsRules.hasStartingSoon(relevant, now)
-                if (activeOrSoon) {
+                val missingBroadcasts = b.games.isNotEmpty() && b.games.all { it.broadcast == null }
+                if (activeOrSoon || missingBroadcasts) {
                     boards.refresh(l, floorMs = SportsRules.MENU_MS)
                 } else {
                     boards.want(l)

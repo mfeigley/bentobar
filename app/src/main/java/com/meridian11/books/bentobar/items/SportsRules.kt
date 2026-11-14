@@ -100,6 +100,7 @@ object SportsRules {
         val shortStatus: String,
         val possessionAbbr: String? = null,
         val situationText: String? = null,
+        val broadcast: String? = null,
         val startEpochMs: Long? = null,
         val finalSinceMs: Long? = null,
         val webLink: String? = null,
@@ -319,6 +320,7 @@ object SportsRules {
                 36,
             ).ifEmpty { null }
         }
+        val broadcast = parseBroadcast(comp, ev)
 
         val dateStr = (comp["date"] ?: ev["date"])?.jsonPrimitive?.content
         val startEpochMs = dateStr?.let(::parseIsoEpochMs)
@@ -352,10 +354,52 @@ object SportsRules {
             shortStatus = shortStatus,
             possessionAbbr = possessionAbbr,
             situationText = situationText,
+            broadcast = broadcast,
             startEpochMs = startEpochMs,
             finalSinceMs = finalSinceMs,
             webLink = webLink,
         )
+    }
+
+    private fun parseBroadcast(comp: JsonObject, ev: JsonObject): String? {
+        val names = ArrayList<String>()
+        fun addName(raw: String?) {
+            val clean = TextRules.oneLine(raw.orEmpty(), 20)
+            if (clean.isNotEmpty() && names.none { it.equals(clean, ignoreCase = true) }) {
+                names.add(clean)
+            }
+        }
+        val broadcasts = (comp["broadcasts"] as? JsonArray) ?: (ev["broadcasts"] as? JsonArray)
+        if (broadcasts != null) {
+            val objects = broadcasts.mapNotNull { it as? JsonObject }
+            val ordered = objects.sortedBy { obj ->
+                val market = obj["market"]?.jsonPrimitive?.content?.lowercase(Locale.ROOT)
+                if (market == "national") 0 else 1
+            }
+            for (obj in ordered) {
+                val arr = obj["names"] as? JsonArray ?: continue
+                for (el in arr) addName(el.jsonPrimitive.content)
+            }
+        }
+        if (names.isEmpty()) {
+            val geo = comp["geoBroadcasts"] as? JsonArray
+            if (geo != null) {
+                val objects = geo.mapNotNull { it as? JsonObject }
+                val ordered = objects.sortedBy { obj ->
+                    val marketType = (obj["market"] as? JsonObject)?.get("type")?.jsonPrimitive?.content?.lowercase(Locale.ROOT)
+                    if (marketType == "national") 0 else 1
+                }
+                for (obj in ordered) {
+                    val shortName = (obj["media"] as? JsonObject)?.get("shortName")?.jsonPrimitive?.content
+                    addName(shortName)
+                }
+            }
+        }
+        if (names.isEmpty()) {
+            addName((comp["broadcast"] ?: ev["broadcast"])?.jsonPrimitive?.content)
+        }
+        if (names.isEmpty()) return null
+        return TextRules.oneLine(names.take(3).joinToString(", "), 32).ifEmpty { null }
     }
 
     private fun parseEspnLink(links: JsonArray?): String? {
@@ -550,10 +594,20 @@ object SportsRules {
         }
     }
 
-    fun spokenGame(g: Game, startTimeText: String? = null): String = when (g.state) {
-        GameState.LIVE -> "${g.awayName} ${g.awayScore ?: 0}, ${g.homeName} ${g.homeScore ?: 0}, ${g.statusDetail}"
-        GameState.FINAL -> "${g.awayName} ${g.awayScore ?: 0}, ${g.homeName} ${g.homeScore ?: 0}, ${g.statusDetail}"
-        GameState.UPCOMING -> "${g.awayName} at ${g.homeName}, ${startTimeText ?: g.statusDetail}"
+    fun menuHeader(g: Game, showLeague: Boolean, startTimeText: String? = null): String =
+        listOfNotNull(
+            g.league.code.takeIf { showLeague },
+            startTimeText ?: g.statusDetail,
+            g.broadcast,
+        ).joinToString(" · ")
+
+    fun spokenGame(g: Game, startTimeText: String? = null): String {
+        val base = when (g.state) {
+            GameState.LIVE -> "${g.awayName} ${g.awayScore ?: 0}, ${g.homeName} ${g.homeScore ?: 0}, ${g.statusDetail}"
+            GameState.FINAL -> "${g.awayName} ${g.awayScore ?: 0}, ${g.homeName} ${g.homeScore ?: 0}, ${g.statusDetail}"
+            GameState.UPCOMING -> "${g.awayName} at ${g.homeName}, ${startTimeText ?: g.statusDetail}"
+        }
+        return if (g.broadcast != null) "$base, ${g.broadcast}" else base
     }
 
     // ---- rate-limiting and adaptive polling -------------------------------------------------------
@@ -627,6 +681,7 @@ object SportsRules {
                     shortStatus = "Q4 4:12",
                     possessionAbbr = "CHI",
                     situationText = "2nd & 6 at TB 38",
+                    broadcast = "FOX",
                     startEpochMs = now - 7_200_000,
                 ),
                 Game(
@@ -645,6 +700,7 @@ object SportsRules {
                     shortStatus = "Q4 1:55",
                     possessionAbbr = "KC",
                     situationText = "1st & 10 at BUF 42",
+                    broadcast = "CBS",
                     startEpochMs = now - 7_200_000,
                 ),
             ),
@@ -667,6 +723,7 @@ object SportsRules {
                     state = GameState.FINAL,
                     statusDetail = "Final",
                     shortStatus = "F",
+                    broadcast = "NBC",
                     startEpochMs = now - 14_400_000,
                 ),
                 Game(
@@ -683,6 +740,7 @@ object SportsRules {
                     state = GameState.FINAL,
                     statusDetail = "Final",
                     shortStatus = "F",
+                    broadcast = "CBS",
                     startEpochMs = now - 18_000_000,
                 ),
             ),
@@ -705,6 +763,7 @@ object SportsRules {
                     state = GameState.UPCOMING,
                     statusDetail = "7:20 PM",
                     shortStatus = "7:20 PM",
+                    broadcast = "ESPN, ABC",
                     startEpochMs = now + 7_200_000,
                 ),
             ),
