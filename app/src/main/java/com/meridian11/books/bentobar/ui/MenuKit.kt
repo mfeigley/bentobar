@@ -102,13 +102,13 @@ fun MenuCard(
     DropColumn(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
         Row(Modifier.padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.popIn(0f, 0.85f).size(30.dp).clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                Modifier.popIn(0f, 0.85f).size(32.dp).clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
                 contentAlignment = Alignment.Center,
             ) {
                 if (iconRes != null) androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(iconRes), null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
-                else SymIcon(icon, size = 17.sp, filled = true, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
+                else SymIcon(icon, size = 17.sp, filled = true, color = MaterialTheme.colorScheme.onPrimary)
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
@@ -148,16 +148,14 @@ fun SearchStatus(text: String) = Box(Modifier.semantics { liveRegion = LiveRegio
 
 @Composable
 fun MenuDivider() = HorizontalDivider(
-    // On glass a tint of the text colour rather than an opaque line (visual.md); it arrives with the block below it.
+    // Arrives with the block below it.
     Modifier.layoutId(JOINS_BELOW).padding(vertical = 8.dp),
-    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isSystemInDarkTheme()) 0.16f else 0.12f),
+    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isSystemInDarkTheme()) 0.35f else 0.45f),
 )
 
 @Composable
 fun SectionLabel(text: String) = Text(text.uppercase(), style = MaterialTheme.typography.labelSmall,
-    // On glass halfway to the text's colour: the accent alone fell to 2:1 over a dark window behind (visual.md §5).
-    color = if (LocalMenuGlass.current?.blur == true) androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.onSurface, 0.5f) else MaterialTheme.colorScheme.primary,
+    color = MaterialTheme.colorScheme.primary,
     modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
 
 /** A small line chart of recent values, filled underneath. Two series share one scale. */
@@ -218,9 +216,8 @@ fun MenuEntry(icon: String, label: String, detail: String? = null, enabled: Bool
     val hovered by source.collectIsHoveredAsState()
     val focused by source.collectIsFocusedAsState()
     Row(
-        modifier.fillMaxWidth().heightIn(min = if (sub != null) 48.dp else 40.dp).focusRing(focused, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp))
-            .background(if ((hovered || focused) && enabled) MaterialTheme.colorScheme.onSurface.copy(
-                alpha = if (LocalMenuGlass.current?.blur == true) 0.12f else 0.10f) else Color.Transparent)
+        modifier.fillMaxWidth().heightIn(min = if (sub != null) 48.dp else 40.dp).focusRing(focused, RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp))
+            .background(if ((hovered || focused) && enabled) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
             .hoverable(source)
             // An Enter that is being held when the focus arrives here (a search's results come in and the
             // first takes the focus) is not this entry's: its repeats are swallowed, so its release presses nothing.
@@ -363,12 +360,12 @@ fun ActionTile(icon: String, label: String, selected: Boolean = false, onClick: 
     val hovered by source.collectIsHoveredAsState()
     val focused by source.collectIsFocusedAsState()
     val bg = when {
-        selected -> MaterialTheme.colorScheme.primaryContainer
+        selected -> MaterialTheme.colorScheme.primary
         hovered || focused -> MaterialTheme.colorScheme.surfaceContainerHighest
         else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
     Column(
-        Modifier.popIn(15f * (i / 4 + i % 4), 0.9f).width(84.dp).focusRing(focused, RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)).background(bg)
+        Modifier.popIn(15f * (i / 4 + i % 4), 0.9f).width(84.dp).focusRing(focused, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(bg)
             .hoverable(source)
             .clickable(interactionSource = source, indication = null, onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand)
@@ -376,10 +373,10 @@ fun ActionTile(icon: String, label: String, selected: Boolean = false, onClick: 
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         SymIcon(icon, size = 20.sp, filled = selected,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.height(4.dp))
         Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
@@ -412,11 +409,15 @@ fun ChipRow(labels: List<String>, selected: Int? = null, onClick: (Int) -> Unit)
             val hovered by source.collectIsHoveredAsState()
             val focused by source.collectIsFocusedAsState()
             val chosen = selected == i
+            val chipBg = when {
+                chosen -> MaterialTheme.colorScheme.primary
+                hovered -> MaterialTheme.colorScheme.surfaceContainerHighest
+                else -> MaterialTheme.colorScheme.surfaceContainerHigh
+            }
             Text(if (chosen) "✓ $l" else l, style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = if (chosen) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                 modifier = popIn.heightIn(min = 32.dp).focusRing(focused, RoundedCornerShape(50)).clip(RoundedCornerShape(50))
-                    .background(if (hovered) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
-                        else MaterialTheme.colorScheme.secondaryContainer)
+                    .background(chipBg)
                     .hoverable(source)
                     .then(if (selected == null) Modifier.clickable(interactionSource = source, indication = null) { onClick(i) }
                         else Modifier.selectable(selected = chosen, interactionSource = source, indication = null, role = Role.RadioButton) { onClick(i) })

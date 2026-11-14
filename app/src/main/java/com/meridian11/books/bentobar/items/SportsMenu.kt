@@ -204,12 +204,13 @@ private fun GameRow(
 
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (hovered || focused) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f) else Color.Transparent)
+            .padding(vertical = 2.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (hovered || focused) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerHigh)
             .hoverable(source)
             .clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand)
-            .padding(horizontal = 8.dp, vertical = 5.dp)
+            .padding(horizontal = 10.dp, vertical = 7.dp)
             .semantics {
                 contentDescription = opensBrowser
                 role = Role.Button
@@ -242,19 +243,20 @@ private fun GameRow(
                 Box(
                     Modifier.size(24.dp)
                         .clip(CircleShape)
+                        .background(if (isPinned) MaterialTheme.colorScheme.primary else Color.Transparent)
                         .clickable(role = Role.Button, onClick = onTogglePin)
                         .pointerHoverIcon(PointerIcon.Hand),
                     contentAlignment = Alignment.Center,
                 ) {
                     SymIcon(
                         Sym.PUSH_PIN,
-                        size = 15.sp,
+                        size = 14.sp,
                         filled = isPinned,
                         contentDescription = pinLabel,
-                        color = if (isPinned) MaterialTheme.colorScheme.primary else quiet,
+                        color = if (isPinned) MaterialTheme.colorScheme.onPrimary else quiet,
                     )
                 }
-                Spacer(Modifier.width(2.dp))
+                Spacer(Modifier.width(4.dp))
             }
             SymIcon(
                 Sym.OPEN_IN_NEW,

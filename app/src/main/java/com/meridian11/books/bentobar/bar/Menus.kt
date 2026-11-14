@@ -70,16 +70,15 @@ fun MenuSurface(width: Dp, maxHeight: Dp, glass: MenuGlassState?, content: @Comp
         // "Tint with system colors" (visual.md §6): the veil, or the solid card, takes half of the palette's secondary
         // container (onSecondary in dark theme): a tint, not a wash, and 0.04 more of it so text stays as readable.
         val tint = Store.config.collectAsState().value.systemTint
-        val hue = if (dark) scheme.onSecondary else scheme.secondaryContainer
+        val baseSurface = if (dark) {
+            lerp(scheme.surfaceContainerHigh, scheme.primaryContainer, if (tint) 0.40f else 0.28f)
+        } else {
+            lerp(scheme.surfaceContainer, scheme.secondaryContainer, if (tint) 0.36f else 0.20f)
+        }
         val look = GlassLook(
-            veil = when {
-                g.blur && tint -> lerp(scheme.surfaceContainerLowest, hue, 0.5f).copy(alpha = if (dark) 0.66f else 0.60f)
-                g.blur -> scheme.surfaceContainerLowest.copy(alpha = if (dark) 0.62f else 0.56f)
-                tint -> lerp(scheme.surfaceContainerHigh, hue, 0.5f)
-                else -> scheme.surfaceContainerHigh
-            },
-            rim = Color.White.copy(alpha = if (dark) 0.44f else 0.80f),
-            hairline = Color.Black.copy(alpha = if (dark) 0.28f else 0.20f),
+            veil = if (g.blur) baseSurface.copy(alpha = if (dark) 0.96f else 0.95f) else baseSurface,
+            rim = scheme.outlineVariant.copy(alpha = if (dark) 0.14f else 0.20f),
+            hairline = Color.Black.copy(alpha = if (dark) 0.28f else 0.14f),
             dark = dark,
         )
         val density = LocalDensity.current.density
@@ -99,14 +98,20 @@ fun MenuSurface(width: Dp, maxHeight: Dp, glass: MenuGlassState?, content: @Comp
                     }
                     .menuGlass(g, look),
             ) {
-                // On glass, text and fills are made for what shows through (visual.md §5): grey text halfway to the main
-                // text's colour, the main text in dark theme halfway to white, tracks and tiles see-through tints of it.
-                // The solid card keeps the scheme as it is.
-                val inks = if (!g.blur) scheme else scheme.copy(
-                    onSurface = if (dark) lerp(scheme.onSurface, Color.White, 0.5f) else scheme.onSurface,
-                    onSurfaceVariant = lerp(scheme.onSurfaceVariant, if (dark) lerp(scheme.onSurface, Color.White, 0.5f) else scheme.onSurface, 0.5f),
-                    surfaceContainerHigh = scheme.onSurface.copy(alpha = if (dark) 0.10f else 0.08f),
-                    surfaceContainerHighest = scheme.onSurface.copy(alpha = if (dark) 0.14f else 0.12f),
+                val recessed = if (dark) {
+                    lerp(scheme.surfaceContainerLowest, scheme.primaryContainer, 0.18f)
+                } else {
+                    scheme.surfaceContainerLowest
+                }
+                val recessedHover = if (dark) {
+                    lerp(scheme.surfaceContainerLow, scheme.primaryContainer, 0.22f)
+                } else {
+                    scheme.surfaceContainerLow
+                }
+                val inks = scheme.copy(
+                    surfaceContainerLow = recessed,
+                    surfaceContainerHigh = recessed,
+                    surfaceContainerHighest = recessedHover,
                 )
                 // Text with no colour of its own takes the glass's (Material's Surface did this; the glass is drawn here).
                 MaterialTheme(colorScheme = inks) {
