@@ -127,24 +127,10 @@ class MenuWindow(
      * Shows the popup with its card's top-left corner at ([x], [y]) on screen, [width] px wide. False if
      * Android refused the window (the service is going): nothing is up then.
      */
-    fun show(
-        x: Int,
-        y: Int,
-        width: Int,
-        instant: Boolean = false,
-        shadow: @Composable () -> Unit,
-        content: @Composable () -> Unit,
-    ): Boolean {
+    fun show(x: Int, y: Int, width: Int, shadow: @Composable () -> Unit, content: @Composable () -> Unit): Boolean {
         val window = dialog.window ?: return false
         glass.blur = wm.isCrossWindowBlurEnabled && !solid
-        val immediate = instant || scale() <= 0f
-        if (immediate) {
-            glass.heightDp = Float.MAX_VALUE
-            glass.presence = 1f; glass.shadow = 1f; glass.contents = 1f; glass.alpha = 1f
-            glass.clockMs = Float.POSITIVE_INFINITY
-        } else {
-            glass.presence = 0.25f
-        }
+        glass.presence = 0.25f
         dialog.setCancelable(false)
         dialog.setTitle(title)
         dialog.setContentView(ComposeView(dialog.context).apply { setContent(content) })
@@ -190,7 +176,7 @@ class MenuWindow(
         wm.addCrossWindowBlurEnabledListener(service.mainExecutor, blurListener)
         phase = Phase.OPENING
         phaseStart = -1L
-        if (immediate) settle() else Choreographer.getInstance().postFrameCallback(tick)
+        if (scale() <= 0f) settle() else Choreographer.getInstance().postFrameCallback(tick)
         return true
     }
 

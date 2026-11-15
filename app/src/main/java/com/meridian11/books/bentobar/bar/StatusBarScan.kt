@@ -22,6 +22,10 @@ data class BarSnapshot(
     val spacerNode: AccessibilityNodeInfo? = null,
     /** Where [spacerNode] was at the scan. It is [free] unless the spacer had no width left. */
     val spacer: Rect? = null,
+    /** The status bar's leftmost clickable chip (Notifications / date toggle on the desktop bar). */
+    val leftToggle: AccessibilityNodeInfo? = null,
+    /** The status bar's rightmost clickable chip (Quick Settings / system icons toggle on the desktop bar). */
+    val rightToggle: AccessibilityNodeInfo? = null,
 )
 
 object StatusBarScan {
@@ -44,6 +48,11 @@ object StatusBarScan {
         var spacer: Rect? = null
         var spacerNode: AccessibilityNodeInfo? = null
         var clock: Rect? = null
+        var leftToggle: AccessibilityNodeInfo? = null
+        var leftEdge = Int.MAX_VALUE
+        var rightToggle: AccessibilityNodeInfo? = null
+        var rightEdge = Int.MIN_VALUE
+        val centerX = bar.centerX()
         val parts = ArrayList<Rect>()
         val names = StringBuilder()
         val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
@@ -57,6 +66,15 @@ object StatusBarScan {
             if (id.endsWith("DesktopStatusBarSpacer")) { spacer = Rect(r); spacerNode = n }
             val text = n.text?.toString().orEmpty()
             if (clock == null && text.isNotEmpty() && timeRe.containsMatchIn(text)) clock = Rect(r)
+            if (n.isClickable && r.width() in 1 until bar.width() * 6 / 10 && r.height() > 0) {
+                if (r.centerX() <= centerX && r.left < leftEdge) {
+                    leftEdge = r.left
+                    leftToggle = n
+                } else if (r.centerX() > centerX && r.right > rightEdge) {
+                    rightEdge = r.right
+                    rightToggle = n
+                }
+            }
             // Leaf-ish pieces that take room: anything clickable or labelled that isn't the whole bar.
             val labelled = n.isClickable || !n.contentDescription.isNullOrEmpty() || text.isNotEmpty()
             if (labelled && r.width() in 1 until bar.width() * 6 / 10 && r.height() > 0) {
@@ -66,7 +84,7 @@ object StatusBarScan {
             for (i in n.childCount - 1 downTo 0) n.getChild(i)?.let { stack.add(it to depth + 1) }
         }
         val free = spacer?.takeIf { it.width() > 0 } ?: widestGap(bar, parts)
-        return BarSnapshot(w.id, bar, free, clock, names.toString().trim(), spacerNode, spacer)
+        return BarSnapshot(w.id, bar, free, clock, names.toString().trim(), spacerNode, spacer, leftToggle, rightToggle)
     }
 
     /** The widest horizontal stretch of the bar that no item covers. */
