@@ -795,13 +795,13 @@ class BarController(private val service: AccessibilityService) {
             // don't fit), ‹ opens the menu.
             Store.config.value.let { if (it.presenting || it.hiddenMode == HiddenMode.SHOW_ALL || (!expanded.value && hiddenItems().isEmpty())) return chevronContext(at) }
             val next = !expanded.value
-            if (next) snap?.let { dismissSystemTray(it) }
             expanded.value = next
             pinned = next
             if (Store.config.value.pinnedOpen != next) Store.update { it.copy(pinnedOpen = next) }
             main.removeCallbacks(collapse)
             val secs = Store.config.value.autoCollapseSec
             if (next && secs > 0) main.postDelayed(collapse, secs * 1000L)
+            if (next) snap?.let { dismissSystemTray(it) }
         }
 
         override fun chevronContext(at: Rect) = barMenu(at, everything = false)
@@ -924,12 +924,12 @@ class BarController(private val service: AccessibilityService) {
         if (spentKey == key) { spentKey = null; if (now - spentAt < 1000) return }
         spentKey = null
         val s = snap ?: return
-        dismissSystemTray(s)
         val back = leaving
         if (menu == null && !leavingThen && leavingKey == key && back != null && back.reopen()) {
             leaving = null; leavingKey = null
             menu = back; menuKey = key
             focusMenu(key)
+            dismissSystemTray(s)
             return
         }
         closeMenu(dissolve = true) // resets the sampling demand, so the new popup's is set after it
@@ -948,47 +948,26 @@ class BarController(private val service: AccessibilityService) {
         menu = o
         menuKey = key
         focusMenu(key)
+        dismissSystemTray(s)
     }
 
-    private var dismissTrayRetry: Runnable? = null
+    @Volatile private var dismissTrayGen = 0
 
     /**
-     * Closes an open system tray (Quick Settings, Notifications, or a status-bar panel) when a BentoBar popup opens.
-     * Asks Android's shade controller first (`GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE`), plus any dismissable node
-     * on the tray window; if a desktop status-bar popup is still up 90 ms later, clicks the status bar's own toggle
-     * chip on that side to fold it away.
+     * Closes an open system tray (Quick Settings, Notifications, or a status-bar panel) on [io] after a BentoBar
+     * popup opens so the popup's own window and opening frames never wait on accessibility IPC. Asks Android's shade
+     * controller first (`GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE`); if a desktop status-bar popup is still up 40 ms
+     * later, clicks the status bar's own toggle chip on that side to fold it away.
      */
     private fun dismissSystemTray(s: BarSnapshot) {
-        dismissTrayRetry?.let { main.removeCallbacks(it) }
-        dismissTrayRetry = null
+        val gen = ++dismissTrayGen
         val maxGap = (32 * density).toInt()
+        val shrinkPx = (8 * density).toInt()
         val screenCenterX = wm.currentWindowMetrics.bounds.width() / 2
-        val windows = runCatching { service.windows }.getOrDefault(emptyList())
-        val tray = windows.firstOrNull { w ->
-            val r = Rect().also { w.getBoundsInScreen(it) }
-            PopupRules.isSystemTray(
-                isSystemWindow = w.type == AccessibilityWindowInfo.TYPE_SYSTEM,
-                windowId = w.id,
-                barWindowId = s.windowId,
-                top = r.top,
-                bottom = r.bottom,
-                barBottom = s.bar.bottom,
-                barHeight = s.bar.height(),
-                maxTopGapPx = maxGap,
-                title = w.title?.toString(),
-            )
-        }
-        runCatching { service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE) }
-        if (tray == null) return
-        val trayBounds = Rect().also { tray.getBoundsInScreen(it) }
-        val trayOnRight = trayBounds.centerX() > screenCenterX
-        runCatching { dismissNodeInWindow(tray) }
-        val retry = Runnable {
-            dismissTrayRetry = null
-            if (!started) return@Runnable
-            val currentWindows = runCatching { service.windows }.getOrDefault(emptyList())
-            val shrinkPx = (8 * density).toInt()
-            val stillOpen = currentWindows.any { w ->
+        callbacks.execute {
+            if (!started || dismissTrayGen != gen) return@execute
+            val windows = runCatching { service.windows }.getOrDefault(emptyList())
+            val tray = windows.firstOrNull { w ->
                 val r = Rect().also { w.getBoundsInScreen(it) }
                 PopupRules.isSystemTray(
                     isSystemWindow = w.type == AccessibilityWindowInfo.TYPE_SYSTEM,
@@ -1000,35 +979,34 @@ class BarController(private val service: AccessibilityService) {
                     barHeight = s.bar.height(),
                     maxTopGapPx = maxGap,
                     title = w.title?.toString(),
-                ) && (r.centerX() > screenCenterX) == trayOnRight && r.height() >= trayBounds.height() - shrinkPx
-            }
-            if (stillOpen) clickBarToggle(currentWindows, s, trayOnRight, screenCenterX)
+                )
+            } ?: return@execute
+            val trayBounds = Rect().also { tray.getBoundsInScreen(it) }
+            val trayOnRight = trayBounds.centerX() > screenCenterX
+            runCatching { service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE) }
+            main.postDelayed({
+                if (!started || dismissTrayGen != gen) return@postDelayed
+                callbacks.execute {
+                    if (!started || dismissTrayGen != gen) return@execute
+                    val currentWindows = runCatching { service.windows }.getOrDefault(emptyList())
+                    val stillOpen = currentWindows.any { w ->
+                        val r = Rect().also { w.getBoundsInScreen(it) }
+                        PopupRules.isSystemTray(
+                            isSystemWindow = w.type == AccessibilityWindowInfo.TYPE_SYSTEM,
+                            windowId = w.id,
+                            barWindowId = s.windowId,
+                            top = r.top,
+                            bottom = r.bottom,
+                            barBottom = s.bar.bottom,
+                            barHeight = s.bar.height(),
+                            maxTopGapPx = maxGap,
+                            title = w.title?.toString(),
+                        ) && (r.centerX() > screenCenterX) == trayOnRight && r.height() >= trayBounds.height() - shrinkPx
+                    }
+                    if (stillOpen) clickBarToggle(currentWindows, s, trayOnRight, screenCenterX)
+                }
+            }, 40L)
         }
-        dismissTrayRetry = retry
-        main.postDelayed(retry, 90L)
-    }
-
-    private fun dismissNodeInWindow(w: AccessibilityWindowInfo): Boolean {
-        val root = w.getRoot(
-            AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_DEPTH_FIRST or
-                AccessibilityNodeInfo.FLAG_PREFETCH_UNINTERRUPTIBLE,
-        ) ?: return false
-        val stack = ArrayDeque<AccessibilityNodeInfo>()
-        stack.add(root)
-        var visited = 0
-        while (stack.isNotEmpty() && visited < 80) {
-            val n = stack.removeLast()
-            visited++
-            val actions = n.actionList
-            if (actions.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS) &&
-                n.performAction(AccessibilityNodeInfo.ACTION_DISMISS)
-            ) return true
-            if (actions.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_COLLAPSE) &&
-                n.performAction(AccessibilityNodeInfo.ACTION_COLLAPSE)
-            ) return true
-            for (i in n.childCount - 1 downTo 0) n.getChild(i)?.let { stack.add(it) }
-        }
-        return false
     }
 
     private fun clickBarToggle(
@@ -1038,7 +1016,6 @@ class BarController(private val service: AccessibilityService) {
         screenCenterX: Int,
     ) {
         val barWin = windows.firstOrNull { it.id == s.windowId } ?: return
-        runCatching { service.clearCache() }
         val root = runCatching {
             barWin.getRoot(
                 AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_DEPTH_FIRST or

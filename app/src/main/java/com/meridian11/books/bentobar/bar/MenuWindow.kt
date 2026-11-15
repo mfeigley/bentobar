@@ -121,9 +121,6 @@ class MenuWindow(
     private var committed = false
     /** When the first frame was asked for, in ns: the clock starts anyway if Android never says (a window not drawn). */
     private var firstAsked = -1L
-    /** The last two frame times while the opening waits, in ns: it starts once frames come on time. */
-    private var tick1 = -1L
-    private var tick2 = -1L
 
     private val blurListener = Consumer<Boolean> { on -> glass.blur = on && !solid; applyBlur() }
     private val frameGlass = ViewTreeObserver.OnPreDrawListener { frame(); true }
@@ -185,7 +182,6 @@ class MenuWindow(
         wm.addCrossWindowBlurEnabledListener(service.mainExecutor, blurListener)
         committed = false
         firstAsked = -1L
-        tick1 = -1L; tick2 = -1L
         window.decorView.viewTreeObserver.registerFrameCommitCallback { committed = true }
         phase = Phase.OPENING
         phaseStart = -1L
@@ -240,21 +236,19 @@ class MenuWindow(
         if (full <= 0f) { Choreographer.getInstance().postFrameCallback(tick); return } // not measured yet
         if (phase == Phase.OPENING && phaseStart < 0) {
             if (firstAsked < 0) firstAsked = nanos
-            // Until the first frame is on its way to the screen, and frames come on time: the lip, not there yet; the clock
-            // waits. A new window's first frames are slow (laying out the whole popup, the shadow's window taking its size):
-            // started on the first of them, the glass sat still, half there, and then jumped to catch up.
-            val frame = 1_000_000_000L / refresh()
-            val onTime = tick1 > 0 && tick2 > 0 && nanos - tick1 <= frame * 3 / 2 && tick1 - tick2 <= frame * 3 / 2
-            tick2 = tick1; tick1 = nanos
-            if (!(committed && onTime) && nanos - firstAsked < FIRST_FRAME_WAIT_NS) {
+            // Until the first frame is on its way to the screen: the lip, not there yet; the clock waits.
+            if (!committed && nanos - firstAsked < FIRST_FRAME_WAIT_NS) {
                 put(MenuMotion.opening(0f, full), nanos)
                 Choreographer.getInstance().postFrameCallback(tick)
                 return
             }
         }
-        if (phaseStart < 0) { phaseStart = nanos; motionMs = 0f; lastStep = nanos }
         val frameMs = 1000f / refresh()
-        val stepMs = ((nanos - lastStep) / 1e6f).coerceIn(0f, 1.5f * frameMs)
+        val stepMs = if (phaseStart < 0) {
+            phaseStart = nanos; motionMs = 0f; frameMs
+        } else {
+            ((nanos - lastStep) / 1e6f).coerceIn(0f, 1.5f * frameMs)
+        }
         lastStep = nanos
         motionMs += stepMs
         val ms = MenuMotion.scaled(motionMs, scale())
