@@ -114,13 +114,6 @@ class MenuWindow(
     private var lastBlur = -1
     private var onGone: (() -> Unit)? = null
     private var shown = false
-    /**
-     * The window's first frame has gone to the screen. A new window's first frame takes a while (tens of ms):
-     * the opening's clock starts after it, or the glass would be part way open before anything showed.
-     */
-    private var committed = false
-    /** When the first frame was asked for, in ns: the clock starts anyway if Android never says (a window not drawn). */
-    private var firstAsked = -1L
 
     private val blurListener = Consumer<Boolean> { on -> glass.blur = on && !solid; applyBlur() }
     private val frameGlass = ViewTreeObserver.OnPreDrawListener { frame(); true }
@@ -134,9 +127,24 @@ class MenuWindow(
      * Shows the popup with its card's top-left corner at ([x], [y]) on screen, [width] px wide. False if
      * Android refused the window (the service is going): nothing is up then.
      */
-    fun show(x: Int, y: Int, width: Int, shadow: @Composable () -> Unit, content: @Composable () -> Unit): Boolean {
+    fun show(
+        x: Int,
+        y: Int,
+        width: Int,
+        instant: Boolean = false,
+        shadow: @Composable () -> Unit,
+        content: @Composable () -> Unit,
+    ): Boolean {
         val window = dialog.window ?: return false
         glass.blur = wm.isCrossWindowBlurEnabled && !solid
+        val immediate = instant || scale() <= 0f
+        if (immediate) {
+            glass.heightDp = Float.MAX_VALUE
+            glass.presence = 1f; glass.shadow = 1f; glass.contents = 1f; glass.alpha = 1f
+            glass.clockMs = Float.POSITIVE_INFINITY
+        } else {
+            glass.presence = 0.25f
+        }
         dialog.setCancelable(false)
         dialog.setTitle(title)
         dialog.setContentView(ComposeView(dialog.context).apply { setContent(content) })
@@ -180,12 +188,9 @@ class MenuWindow(
         }
         shown = true
         wm.addCrossWindowBlurEnabledListener(service.mainExecutor, blurListener)
-        committed = false
-        firstAsked = -1L
-        window.decorView.viewTreeObserver.registerFrameCommitCallback { committed = true }
         phase = Phase.OPENING
         phaseStart = -1L
-        if (scale() <= 0f) settle() else Choreographer.getInstance().postFrameCallback(tick)
+        if (immediate) settle() else Choreographer.getInstance().postFrameCallback(tick)
         return true
     }
 
@@ -234,20 +239,11 @@ class MenuWindow(
         if (!shown || phase == Phase.GONE || phase == Phase.OPEN) return
         val full = fullDp()
         if (full <= 0f) { Choreographer.getInstance().postFrameCallback(tick); return } // not measured yet
-        if (phase == Phase.OPENING && phaseStart < 0) {
-            if (firstAsked < 0) firstAsked = nanos
-            // Until the first frame is on its way to the screen: the lip, not there yet; the clock waits.
-            if (!committed && nanos - firstAsked < FIRST_FRAME_WAIT_NS) {
-                put(MenuMotion.opening(0f, full), nanos)
-                Choreographer.getInstance().postFrameCallback(tick)
-                return
-            }
-        }
         val frameMs = 1000f / refresh()
         val stepMs = if (phaseStart < 0) {
             phaseStart = nanos; motionMs = 0f; frameMs
         } else {
-            ((nanos - lastStep) / 1e6f).coerceIn(0f, 1.5f * frameMs)
+            ((nanos - lastStep) / 1e6f).coerceIn(0f, 50f)
         }
         lastStep = nanos
         motionMs += stepMs
@@ -396,8 +392,6 @@ class MenuWindow(
         const val BLUR_DP = 24f
         /** Each frame of an opening, in debug logs: `adb shell setprop log.tag.BentoBarMotion DEBUG`. */
         private const val MOTION_TAG = "BentoBarMotion"
-        /** The opening's clock starts this long after its first frame was asked for, if Android hasn't said it was drawn. */
-        private const val FIRST_FRAME_WAIT_NS = 150_000_000L
         /** How long after its fold should have ended a closing window is taken away regardless. */
         private const val REMOVAL_GRACE_MS = 250L
     }

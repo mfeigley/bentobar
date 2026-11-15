@@ -924,15 +924,7 @@ class BarController(private val service: AccessibilityService) {
         if (spentKey == key) { spentKey = null; if (now - spentAt < 1000) return }
         spentKey = null
         val s = snap ?: return
-        val back = leaving
-        if (menu == null && !leavingThen && leavingKey == key && back != null && back.reopen()) {
-            leaving = null; leavingKey = null
-            menu = back; menuKey = key
-            focusMenu(key)
-            dismissSystemTray(s)
-            return
-        }
-        closeMenu(dissolve = true) // resets the sampling demand, so the new popup's is set after it
+        closeMenu(now = true) // resets the sampling demand, so the new popup's is set after it
         val loc = strip.locationOnScreen()
         val a = Rect(anchor).apply { offset(loc[0], loc[1]) }
         val bounds = wm.currentWindowMetrics.bounds
@@ -944,7 +936,7 @@ class BarController(private val service: AccessibilityService) {
         val y = s.bar.bottom + (MenuRoom.top.value * density).toInt()
         val maxH = ((bounds.height() - s.bar.bottom) / density - 170).toInt().coerceAtLeast(200)
         val o = MenuWindow(service, "BentoBar menu", onOutside = { outside(it) }, onEscape = { closeMenu() })
-        if (!o.show(x, y, w, shadow = { MenuShadow(widthDp.dp, o.glass) }) { MenuSurface(widthDp.dp, maxH.dp, o.glass) { content(host) } }) return
+        if (!o.show(x, y, w, instant = true, shadow = { MenuShadow(widthDp.dp, o.glass) }) { MenuSurface(widthDp.dp, maxH.dp, o.glass) { content(host) } }) return
         menu = o
         menuKey = key
         focusMenu(key)
@@ -955,41 +947,23 @@ class BarController(private val service: AccessibilityService) {
 
     /**
      * Closes an open system tray (Quick Settings, Notifications, or a status-bar panel) on [io] after a BentoBar
-     * popup opens so the popup's own window and opening frames never wait on accessibility IPC. Asks Android's shade
-     * controller first (`GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE`); if a desktop status-bar popup is still up 40 ms
-     * later, clicks the status bar's own toggle chip on that side to fold it away.
+     * popup opens so the popup's own window never waits on accessibility IPC. Fires
+     * `GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE` immediately; only if a desktop status-bar popup is still up 300 ms
+     * later does it click the status bar's own toggle chip on that side.
      */
     private fun dismissSystemTray(s: BarSnapshot) {
         val gen = ++dismissTrayGen
         val maxGap = (32 * density).toInt()
-        val shrinkPx = (8 * density).toInt()
         val screenCenterX = wm.currentWindowMetrics.bounds.width() / 2
         callbacks.execute {
             if (!started || dismissTrayGen != gen) return@execute
-            val windows = runCatching { service.windows }.getOrDefault(emptyList())
-            val tray = windows.firstOrNull { w ->
-                val r = Rect().also { w.getBoundsInScreen(it) }
-                PopupRules.isSystemTray(
-                    isSystemWindow = w.type == AccessibilityWindowInfo.TYPE_SYSTEM,
-                    windowId = w.id,
-                    barWindowId = s.windowId,
-                    top = r.top,
-                    bottom = r.bottom,
-                    barBottom = s.bar.bottom,
-                    barHeight = s.bar.height(),
-                    maxTopGapPx = maxGap,
-                    title = w.title?.toString(),
-                )
-            } ?: return@execute
-            val trayBounds = Rect().also { tray.getBoundsInScreen(it) }
-            val trayOnRight = trayBounds.centerX() > screenCenterX
             runCatching { service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE) }
             main.postDelayed({
                 if (!started || dismissTrayGen != gen) return@postDelayed
                 callbacks.execute {
                     if (!started || dismissTrayGen != gen) return@execute
                     val currentWindows = runCatching { service.windows }.getOrDefault(emptyList())
-                    val stillOpen = currentWindows.any { w ->
+                    val tray = currentWindows.firstOrNull { w ->
                         val r = Rect().also { w.getBoundsInScreen(it) }
                         PopupRules.isSystemTray(
                             isSystemWindow = w.type == AccessibilityWindowInfo.TYPE_SYSTEM,
@@ -1001,11 +975,13 @@ class BarController(private val service: AccessibilityService) {
                             barHeight = s.bar.height(),
                             maxTopGapPx = maxGap,
                             title = w.title?.toString(),
-                        ) && (r.centerX() > screenCenterX) == trayOnRight && r.height() >= trayBounds.height() - shrinkPx
-                    }
-                    if (stillOpen) clickBarToggle(currentWindows, s, trayOnRight, screenCenterX)
+                        )
+                    } ?: return@execute
+                    val trayBounds = Rect().also { tray.getBoundsInScreen(it) }
+                    val trayOnRight = trayBounds.centerX() > screenCenterX
+                    clickBarToggle(currentWindows, s, trayOnRight, screenCenterX)
                 }
-            }, 40L)
+            }, 300L)
         }
     }
 
@@ -1118,7 +1094,7 @@ class BarController(private val service: AccessibilityService) {
      * another), or goes at once ([now]: the service stopping, the screen going off, the display
      * changing). [then] runs once it is off the screen.
      */
-    fun closeMenu(now: Boolean = false, dissolve: Boolean = false, then: (() -> Unit)? = null) {
+    fun closeMenu(now: Boolean = true, dissolve: Boolean = false, then: (() -> Unit)? = null) {
         val o = menu
         if (o == null) {
             if (now) { leaving?.close(now = true); leaving = null; leavingKey = null; leavingThen = false }
