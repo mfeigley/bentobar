@@ -489,31 +489,63 @@ object SportsRules {
      */
     internal fun finalOrderKey(g: Game): Long = g.finalSinceMs ?: g.startEpochMs ?: Long.MIN_VALUE
 
+    private const val YESTERDAY_UPCOMING_GRACE_MS = 6 * 60 * 60_000L
+
     private fun gameLocalDate(epochMs: Long?, zone: ZoneId): LocalDate? =
         epochMs?.let { runCatching { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }.getOrNull() }
 
-    internal fun sortBucket(g: Game, pinnedIds: Set<String>, now: Long, today: LocalDate?, zone: ZoneId): Int = when {
-        g.inLiveRotation(now) && g.id in pinnedIds -> 0
-        g.inLiveRotation(now) -> 1
-        g.state == GameState.FINAL -> {
+    /**
+     * True when at least one game in [games] scheduled to start on `today.minusDays(1)` in [zone]
+     * is not yet completed (still [GameState.LIVE], in [Game.inLiveRotation], or [GameState.UPCOMING]
+     * within [YESTERDAY_UPCOMING_GRACE_MS] of its scheduled start).
+     */
+    internal fun hasIncompleteYesterdayGame(games: List<Game>, today: LocalDate?, zone: ZoneId, now: Long): Boolean {
+        if (today == null) return false
+        val yesterday = today.minusDays(1)
+        return games.any { g ->
             val gameDate = gameLocalDate(g.startEpochMs ?: g.finalSinceMs, zone)
-            if (today == null || gameDate == today) 2 else 4
-        }
-        else -> {
-            val gameDate = gameLocalDate(g.startEpochMs, zone)
-            if (today != null && gameDate == today) 3 else 5
+            gameDate == yesterday && (
+                g.state == GameState.LIVE ||
+                    g.inLiveRotation(now) ||
+                    (g.state == GameState.UPCOMING && (g.startEpochMs == null || now - g.startEpochMs <= YESTERDAY_UPCOMING_GRACE_MS))
+                )
         }
     }
 
     /**
-     * All games across [leagues] matching [teams] (or all games when [teams] is empty), ordered with:
+     * True when [g] belongs to the active day window for [today] in [zone]:
+     * - Any game currently in the live rotation ([Game.inLiveRotation]) is always included.
+     * - Games scheduled on [today] are always included.
+     * - Games scheduled on `today.minusDays(1)` are included when [allowYesterday] is true (after midnight
+     *   until all games scheduled to start on the previous day are completed).
+     */
+    internal fun isCurrentDay(
+        g: Game,
+        today: LocalDate?,
+        zone: ZoneId,
+        now: Long,
+        allowYesterday: Boolean = false,
+    ): Boolean {
+        if (today == null || g.inLiveRotation(now)) return true
+        val gameDate = gameLocalDate(g.startEpochMs ?: g.finalSinceMs, zone) ?: return true
+        return gameDate == today || (allowYesterday && gameDate == today.minusDays(1))
+    }
+
+    internal fun sortBucket(g: Game, pinnedIds: Set<String>, now: Long, today: LocalDate?, zone: ZoneId): Int = when {
+        g.inLiveRotation(now) && g.id in pinnedIds -> 0
+        g.inLiveRotation(now) -> 1
+        g.state == GameState.FINAL -> 2
+        else -> 3
+    }
+
+    /**
+     * All current-day games across [leagues] matching [teams] (or all current-day games when [teams] is empty),
+     * plus previous-day games after midnight while any previous-day game is still incomplete, ordered with:
      * 1. Pinned games in the live rotation ([Game.inLiveRotation]),
      * 2. Unpinned games in the live rotation ([Game.inLiveRotation]),
-     * 3. Today's [GameState.FINAL] games ordered by most recently ended first,
-     * 4. Today's [GameState.UPCOMING] games in chronological order (before completed games from previous days),
-     * 5. Earlier days' [GameState.FINAL] games ordered by most recently ended first (falling back to
+     * 3. [GameState.FINAL] games ordered by most recently ended first (falling back to
      *    [Game.startEpochMs] in reverse chronological order when the end time is unknown),
-     * 6. Future days' [GameState.UPCOMING] games in chronological order.
+     * 4. [GameState.UPCOMING] games in chronological order.
      */
     fun gamesFor(
         leagues: List<League>,
@@ -524,10 +556,12 @@ object SportsRules {
         zone: ZoneId = ZoneId.systemDefault(),
     ): List<Game> {
         val raw = leagues.flatMap { boards[it]?.games.orEmpty() }
-        val filtered = if (teams.isEmpty()) raw else raw.filter { g -> teams.any { g.matchesTeam(it) } }
         val today = if (now > 0L) gameLocalDate(now, zone) else null
+        val allowYesterday = hasIncompleteYesterdayGame(raw, today, zone, now)
+        val todayGames = raw.filter { isCurrentDay(it, today, zone, now, allowYesterday) }
+        val filtered = if (teams.isEmpty()) todayGames else todayGames.filter { g -> teams.any { g.matchesTeam(it) } }
         fun bucket(g: Game): Int = sortBucket(g, pinnedIds, now, today, zone)
-        fun isFinalBucket(b: Int): Boolean = b == 2 || b == 4
+        fun isFinalBucket(b: Int): Boolean = b == 2
         // Pure single-element projection keys guarantee strict weak ordering (TimSort transitivity),
         // including when buckets 0 or 1 mix LIVE games with FINAL games still inside the 5-minute hold.
         val comparator = compareBy<Game> { g -> bucket(g) }
@@ -645,7 +679,12 @@ object SportsRules {
      * - Later upcoming games today: every 30 minutes ([IDLE_REFRESH_MS]).
      * - All games final or none scheduled: every 60 minutes ([DONE_REFRESH_MS]).
      */
-    fun every(board: Scoreboard, now: Long = board.fetchedAt, teams: List<String> = emptyList()): Long {
+    fun every(
+        board: Scoreboard,
+        now: Long = board.fetchedAt,
+        teams: List<String> = emptyList(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): Long {
         if (board.failure == Failure.SLOW_DOWN) {
             return maxOf(SLOW_MS, board.retryAfterSec * 1000L)
         }
@@ -653,7 +692,10 @@ object SportsRules {
             val shift = (board.misses - 1).coerceIn(0, 3)
             return minOf(MAX_RETRY_MS, RETRY_MS shl shift)
         }
-        val relevant = if (teams.isEmpty()) board.games else board.games.filter { g -> teams.any { g.matchesTeam(it) } }
+        val today = if (now > 0L) gameLocalDate(now, zone) else null
+        val allowYesterday = hasIncompleteYesterdayGame(board.games, today, zone, now)
+        val todayGames = board.games.filter { isCurrentDay(it, today, zone, now, allowYesterday) }
+        val relevant = if (teams.isEmpty()) todayGames else todayGames.filter { g -> teams.any { g.matchesTeam(it) } }
         return when {
             relevant.any { it.state == GameState.LIVE } -> LIVE_REFRESH_MS
             hasStartingSoon(relevant, now) -> SOON_REFRESH_MS

@@ -256,10 +256,11 @@ class SportsRulesTest {
         assertEquals(SportsRules.DONE_REFRESH_MS, SportsRules.every(board, now = 100_000L, teams = listOf("DAL")))
 
         // Upcoming game starting in 15 minutes -> SOON_REFRESH_MS (5 minutes)
+        val eastern = java.time.ZoneId.of("America/New_York")
         val kickMs = board.games[2].startEpochMs!!
-        assertEquals(SportsRules.SOON_REFRESH_MS, SportsRules.every(board, now = kickMs - 15 * 60_000L, teams = listOf("SF")))
+        assertEquals(SportsRules.SOON_REFRESH_MS, SportsRules.every(board, now = kickMs - 15 * 60_000L, teams = listOf("SF"), zone = eastern))
         // Upcoming game starting in 3 hours -> IDLE_REFRESH_MS (30 minutes)
-        assertEquals(SportsRules.IDLE_REFRESH_MS, SportsRules.every(board, now = kickMs - 3 * 3600_000L, teams = listOf("SF")))
+        assertEquals(SportsRules.IDLE_REFRESH_MS, SportsRules.every(board, now = kickMs - 3 * 3600_000L, teams = listOf("SF"), zone = eastern))
 
         // Exponential backoff on consecutive misses
         assertEquals(SportsRules.RETRY_MS, SportsRules.every(board.copy(failure = Failure.OFFLINE, misses = 1)))
@@ -413,7 +414,7 @@ class SportsRulesTest {
         }
     }
 
-    @Test fun showsUpcomingGamesLaterTodayBeforeYesterdayFinalGames() {
+    @Test fun limitsGamesToCurrentDayAndExcludesOtherDays() {
         val zone = java.time.ZoneId.of("America/Chicago")
         val now = java.time.ZonedDateTime.of(2026, 11, 9, 18, 30, 0, 0, zone).toInstant().toEpochMilli()
         val template = SportsRules.sample("final", League.NFL, now)!!.games.first()
@@ -487,8 +488,32 @@ class SportsRulesTest {
             zone = zone,
         )
         assertEquals(
-            listOf("mon_fin", "mon_up1", "mon_up2", "sun2", "sun1", "tue_up"),
+            listOf("mon_fin", "mon_up1", "mon_up2"),
             ordered.map { it.id },
+        )
+
+        // After midnight (00:30 on Nov 9), while a late Nov 8 game is still LIVE, all Nov 8 games remain included
+        val afterMidnight = java.time.ZonedDateTime.of(2026, 11, 9, 0, 30, 0, 0, zone).toInstant().toEpochMilli()
+        val sundayLateLive = sundayNightFinal.copy(
+            id = "sun_live",
+            state = GameState.LIVE,
+            shortStatus = "Q4 2:10",
+            finalSinceMs = null,
+        )
+        val midnightBoards = mapOf(
+            League.NFL to SportsRules.Scoreboard(League.NFL, listOf(sundayEarlyFinal, sundayLateLive, mondayNightUpcoming1), fetchedAt = afterMidnight),
+            League.NBA to SportsRules.Scoreboard(League.NBA, listOf(mondayNightUpcoming2, tuesdayUpcoming), fetchedAt = afterMidnight),
+        )
+        val withIncompleteYesterday = SportsRules.gamesFor(
+            listOf(League.NFL, League.NBA),
+            emptyList(),
+            midnightBoards,
+            now = afterMidnight,
+            zone = zone,
+        )
+        assertEquals(
+            listOf("sun_live", "sun1", "mon_up1", "mon_up2"),
+            withIncompleteYesterday.map { it.id },
         )
     }
 
