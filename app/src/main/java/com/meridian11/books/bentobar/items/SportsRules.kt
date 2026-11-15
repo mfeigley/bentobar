@@ -42,6 +42,8 @@ object SportsRules {
     const val SLOW_MS = 15 * 60_000L
     /** Keep a game in the live rotation for 5 minutes after it initially transitions from LIVE to FINAL. */
     const val FINAL_HOLD_MS = 5 * 60_000L
+    /** After midnight, keep showing the previous day's games until 1 hour after the last previous-day game ends. */
+    const val YESTERDAY_HOLD_MS = 60 * 60_000L
 
     private const val SOON_AHEAD_MS = 30 * 60_000L
     private const val SOON_BEHIND_MS = 3 * 60 * 60_000L
@@ -496,17 +498,23 @@ object SportsRules {
 
     /**
      * True when at least one game in [games] scheduled to start on `today.minusDays(1)` in [zone]
-     * is not yet completed (still [GameState.LIVE], in [Game.inLiveRotation], or [GameState.UPCOMING]
-     * within [YESTERDAY_UPCOMING_GRACE_MS] of its scheduled start).
+     * is not yet completed or ended within the last [YESTERDAY_HOLD_MS] (1 hour):
+     * - Still [GameState.LIVE],
+     * - [GameState.FINAL] within [YESTERDAY_HOLD_MS] of [Game.finalSinceMs], or
+     * - [GameState.UPCOMING] within [YESTERDAY_UPCOMING_GRACE_MS] of its scheduled start.
      */
     internal fun hasIncompleteYesterdayGame(games: List<Game>, today: LocalDate?, zone: ZoneId, now: Long): Boolean {
         if (today == null) return false
         val yesterday = today.minusDays(1)
         return games.any { g ->
             val gameDate = gameLocalDate(g.startEpochMs ?: g.finalSinceMs, zone)
+            val heldAfterFinal = g.state == GameState.FINAL &&
+                g.finalSinceMs != null &&
+                now >= g.finalSinceMs - 60_000L &&
+                now - g.finalSinceMs <= YESTERDAY_HOLD_MS
             gameDate == yesterday && (
                 g.state == GameState.LIVE ||
-                    g.inLiveRotation(now) ||
+                    heldAfterFinal ||
                     (g.state == GameState.UPCOMING && (g.startEpochMs == null || now - g.startEpochMs <= YESTERDAY_UPCOMING_GRACE_MS))
                 )
         }

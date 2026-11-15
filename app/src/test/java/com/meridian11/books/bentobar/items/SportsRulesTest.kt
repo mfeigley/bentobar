@@ -515,6 +515,35 @@ class SportsRulesTest {
             listOf("sun_live", "sun1", "mon_up1", "mon_up2"),
             withIncompleteYesterday.map { it.id },
         )
+
+        // After the last Nov 8 game ends (at 00:10 on Nov 9), keep Nov 8 games for 1 hour (until 01:10) before switching days
+        val postFinalBoards = mapOf(
+            League.NFL to SportsRules.Scoreboard(League.NFL, listOf(sundayEarlyFinal, sundayNightFinal, mondayNightUpcoming1), fetchedAt = afterMidnight),
+            League.NBA to SportsRules.Scoreboard(League.NBA, listOf(mondayNightUpcoming2, tuesdayUpcoming), fetchedAt = afterMidnight),
+        )
+        val withinOneHourOfLastEnd = java.time.ZonedDateTime.of(2026, 11, 9, 0, 45, 0, 0, zone).toInstant().toEpochMilli()
+        assertEquals(
+            listOf("sun2", "sun1", "mon_up1", "mon_up2"),
+            SportsRules.gamesFor(
+                listOf(League.NFL, League.NBA),
+                emptyList(),
+                postFinalBoards,
+                now = withinOneHourOfLastEnd,
+                zone = zone,
+            ).map { it.id },
+        )
+
+        val pastOneHourOfLastEnd = java.time.ZonedDateTime.of(2026, 11, 9, 1, 15, 0, 0, zone).toInstant().toEpochMilli()
+        assertEquals(
+            listOf("mon_up1", "mon_up2"),
+            SportsRules.gamesFor(
+                listOf(League.NFL, League.NBA),
+                emptyList(),
+                postFinalBoards,
+                now = pastOneHourOfLastEnd,
+                zone = zone,
+            ).map { it.id },
+        )
     }
 
     @Test fun currentBarGameTracksRotatingAndPinnedGameInStatusBar() {
